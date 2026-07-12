@@ -7,6 +7,14 @@
       "tag": "PII_FINANCIAL",
       "tag_value": "arr",
       "is_active": true
+    },
+    "amount_raw": {
+      "schema": "SALESFORCE_RAW_FIVETRAN",
+      "table": "OPPORTUNITY",
+      "column": "AMOUNT",
+      "tag": "PII_FINANCIAL",
+      "tag_value": "amount",
+      "is_active": true
     }
   }
 }

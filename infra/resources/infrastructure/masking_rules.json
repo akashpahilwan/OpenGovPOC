@@ -3,12 +3,13 @@
     "pii_financial_number": {
       "tag": "PII_FINANCIAL",
       "allowed_values": [
-        "arr"
+        "arr",
+        "amount"
       ],
       "data_type": "NUMBER(18,2)",
       "mask_expression": "NULL",
       "policy_name": "MASK_PII_FINANCIAL_NUMBER",
-      "comment": "Financial PII (ARR) - fully masked below exempt roles",
+      "comment": "Financial PII (ARR / deal amount) - masked below exempt roles",
       "is_active": true
     },
     "pii_contact_email": {

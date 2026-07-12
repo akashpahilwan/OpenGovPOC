@@ -5,6 +5,12 @@
       "role_type": "FUNCTIONAL",
       "role": "REVOPS_ADMIN",
       "is_active": true
+    },
+    "dbt_etl_reads_financial": {
+      "tag": "PII_FINANCIAL",
+      "role_type": "FUNCTIONAL",
+      "role": "REVOPS_DEVELOPER",
+      "is_active": true
     }
   }
 }
