@@ -118,13 +118,19 @@ resource "snowflake_grant_privileges_to_account_role" "dbt_governance_usage" {
   depends_on = [snowflake_schema.schema]
 }
 
+# APPLY on every governance tag — dbt re-tags derived columns of any
+# classification (PII_FINANCIAL, PII_CONTACT, ...) as it materializes models.
 resource "snowflake_grant_privileges_to_account_role" "dbt_apply_tag" {
-  for_each          = local.dbt_project_roles
-  account_role_name = snowflake_account_role.service[each.key].name
+  for_each = merge([
+    for role in local.dbt_project_roles : {
+      for tag in keys(snowflake_tag.tag) : "${role}.${tag}" => { role = role, tag = tag }
+    }
+  ]...)
+  account_role_name = snowflake_account_role.service[each.value.role].name
   privileges        = ["APPLY"]
   on_schema_object {
     object_type = "TAG"
-    object_name = "\"${local.db_name}\".\"GOVERNANCE\".\"${snowflake_tag.pii_financial.name}\""
+    object_name = "\"${local.db_name}\".\"GOVERNANCE\".\"${each.value.tag}\""
   }
 }
 

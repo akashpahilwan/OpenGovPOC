@@ -35,6 +35,9 @@ locals {
   functional_grants    = jsondecode(file("${path.module}/../resources/infrastructure/functional_grants.json"))["functional_grants"]
   functional_grant_map = { for k, v in local.functional_grants : k => v if v.is_active }
 
+  masking_rules    = jsondecode(file("${path.module}/../resources/infrastructure/masking_rules.json"))["masking_rules"]
+  masking_rule_map = { for k, v in local.masking_rules : k => v if v.is_active }
+
   masking_exemptions    = jsondecode(file("${path.module}/../resources/infrastructure/masking_exemptions.json"))["masking_exemptions"]
   masking_exemption_map = { for k, v in local.masking_exemptions : k => v if v.is_active }
 

@@ -1,65 +1,101 @@
 # ============================================================================
-# Governance — PII tag + ARR masking policy (tag-based masking).
+# Governance — data-driven PII tags + masking policies.
 #
-# Deliverable: "Column masking policy on ACCOUNT.ARR: return NULL for roles
-# below REVOPS_ADMIN, actual value for REVOPS_ADMIN."
+# Nothing here is hardcoded to ARR anymore. The masking VOCABULARY lives in
+# config/masking_rules.csv (tag x data_type x mask_expression); WHO sees
+# unmasked data lives in config/masking_exemptions.csv (per tag). Adding a
+# new rule — a new tag, a new data type on an existing tag, a different mask
+# algorithm — is a CSV row, zero HCL.
 #
 # Design choices worth defending to the panel:
 #
-# 1. TAG-BASED, not per-column. The policy is attached to the PII_FINANCIAL
-#    tag (seed SQL: ALTER TAG ... SET MASKING POLICY ...); any column tagged
-#    PII_FINANCIAL='arr' is masked automatically. Scales to 10 domains:
-#    classifying a column IS protecting it — no per-table policy wiring.
+# 1. TAG-BASED, not per-column. A policy attaches to a tag; any column
+#    carrying that tag (config/pii_columns.csv, applied by apply_pii_tags.py)
+#    is masked automatically. Classifying a column IS protecting it — scales
+#    to 10 domains with no per-table policy wiring.
 #
 # 2. IS_ROLE_IN_SESSION, not CURRENT_ROLE(). Hierarchy-aware: a user holding
-#    REVOPS_ADMIN (directly or via inheritance) is unmasked even when running
-#    with a secondary role active. CURRENT_ROLE() breaks under role hierarchy.
+#    an exempt role (directly or via inheritance) is unmasked even with a
+#    secondary role active. CURRENT_ROLE() breaks under role hierarchy.
 #
-# 3. dbt service roles are EXEMPT — deliberately. dbt materializes staging
-#    and mart tables; if dbt read masked NULLs it would PERSIST NULLs and
-#    REVOPS_ADMIN could never see real ARR downstream. Instead dbt reads
-#    real values and re-tags the arr column on every model it builds
-#    (post-hook), so the mask travels with the data. Humans below
-#    REVOPS_ADMIN see NULL at every layer.
+# 3. dbt service roles are exempt (config) — they materialize staging/marts;
+#    if they read masked NULLs they would PERSIST them and even REVOPS_ADMIN
+#    would lose real values downstream. dbt re-tags derived columns so the
+#    mask travels with the data.
+#
+# 4. One policy per (tag, data_type). Snowflake allows several masking
+#    policies on one tag only if their argument types differ, so PII_CONTACT
+#    can mask both VARCHAR emails and VARCHAR phones... but two VARCHAR rules
+#    on the same tag collide — sync_config.py rejects that pair at sync time.
 # ============================================================================
 
-resource "snowflake_tag" "pii_financial" {
-  name                   = "PII_FINANCIAL"
+locals {
+  active_rules = { for k, v in var.masking_rules : k => v if v.is_active }
+
+  # Distinct tags, with the union of allowed_values across that tag's rules.
+  rule_tags = distinct([for k, v in local.active_rules : v.tag])
+  tags = {
+    for t in local.rule_tags : t => distinct(flatten([
+      for k, v in local.active_rules : v.allowed_values if v.tag == t
+    ]))
+  }
+
+  # Per-tag exempt roles (config/masking_exemptions.csv). FUNCTIONAL = literal
+  # account-wide role name; SERVICE = base name expanded to this env.
+  exempt_by_tag = {
+    for t in local.rule_tags : t => concat(
+      sort([for k, v in var.masking_exemptions : v.role
+      if v.is_active && v.tag == t && v.role_type == "FUNCTIONAL"]),
+      sort([for k, v in var.masking_exemptions : snowflake_account_role.service[v.role].name
+      if v.is_active && v.tag == t && v.role_type == "SERVICE"]),
+    )
+  }
+
+}
+
+# ── Tags — one per distinct classification ───────────────────────────────────
+
+resource "snowflake_tag" "tag" {
+  for_each               = local.tags
+  name                   = each.key
   database               = snowflake_database.db.name
   schema                 = snowflake_schema.schema["GOVERNANCE"].name
-  ordered_allowed_values = ["arr"]
-  comment                = "Financial PII classification. Tagged columns are masked via attached policy."
+  ordered_allowed_values = length(each.value) > 0 ? each.value : null
+  comment                = "PII classification ${each.key} - masked via attached policy(ies)."
 }
 
-locals {
-  # Unmasked readers — config-driven (config/masking_exemptions.csv).
-  # FUNCTIONAL = literal account-wide role; SERVICE = env-expanded here.
-  # dbt ETL roles must be exempt or they would PERSIST NULLs downstream.
-  masking_exempt_roles = concat(
-    sort([for k, v in var.masking_exemptions : v.role
-    if v.is_active && v.role_type == "FUNCTIONAL" && v.tag == "PII_FINANCIAL"]),
-    sort([for k, v in var.masking_exemptions : snowflake_account_role.service[v.role].name
-    if v.is_active && v.role_type == "SERVICE" && v.tag == "PII_FINANCIAL"]),
-  )
-}
+# ── Masking policies — one per (tag, data_type) rule ─────────────────────────
+# body: exempt roles see the real VAL; everyone else gets the rule's
+# mask_expression (NULL, a partial reveal, a hash, ... — defined in config).
 
-resource "snowflake_masking_policy" "mask_arr" {
-  name     = "MASK_ARR_NUMBER"
+resource "snowflake_masking_policy" "policy" {
+  for_each = local.active_rules
+  name     = each.value.policy_name # derived in sync_config.py (single source)
   database = snowflake_database.db.name
   schema   = snowflake_schema.schema["GOVERNANCE"].name
 
   argument {
     name = "VAL"
-    type = "NUMBER(18,2)"
+    type = each.value.data_type
   }
 
   body = <<-SQL
     CASE
-      ${join("\n      ", [for r in local.masking_exempt_roles : "WHEN IS_ROLE_IN_SESSION('${r}') THEN VAL"])}
-      ELSE NULL
+      ${join("\n      ", [for r in local.exempt_by_tag[each.value.tag] : "WHEN IS_ROLE_IN_SESSION('${r}') THEN VAL"])}
+      ELSE ${each.value.mask_expression}
     END
   SQL
 
-  return_data_type = "NUMBER(18,2)"
-  comment          = "ARR visible only to REVOPS_ADMIN (+ dbt ETL roles); NULL for all others."
+  return_data_type = each.value.data_type
+  comment          = each.value.comment
+
+  depends_on = [snowflake_tag.tag]
 }
+
+# ── Tag -> policy binding is NOT a Terraform resource in this provider ───────
+# snowflakedb/snowflake ~> 2.18 has no tag_masking_policy_association resource
+# (only column-level application, which would drift when Fivetran recreates
+# tables). So the ALTER TAG ... SET MASKING POLICY binding is done idempotently
+# from the SAME config by infra/apply_pii_tags.py, using each rule's
+# policy_name — run it once per env after apply. Tags + policies here;
+# binding + column classification there.

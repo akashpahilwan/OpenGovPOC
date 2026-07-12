@@ -83,6 +83,25 @@ variable "tables" {
   EOT
 }
 
+variable "masking_rules" {
+  type = map(object({
+    tag             = string
+    allowed_values  = list(string)
+    data_type       = string
+    mask_expression = string # ELSE branch — references VAL, returns data_type
+    policy_name     = string # derived in sync_config.py (MASK_<tag>_<basetype>)
+    comment         = string
+    is_active       = bool
+  }))
+  default     = {}
+  description = <<-EOT
+    The masking VOCABULARY — from config/masking_rules.csv. One row per
+    (tag, data_type): generates a tag (deduped across rows) and a masking
+    policy whose non-exempt branch is mask_expression. Adding a rule is a
+    CSV row; no HCL changes.
+  EOT
+}
+
 variable "masking_exemptions" {
   type = map(object({
     tag       = string

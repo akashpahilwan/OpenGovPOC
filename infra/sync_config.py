@@ -45,6 +45,12 @@ Column reference
                           | warehouse | is_active
   functional_grants.csv : key | role | env (DEV/QA/PROD/ALL)
                           | schema (exact, PREFIX* or *) | level (R/W) | is_active
+  masking_rules.csv     : key | tag | allowed_values (pipe) | data_type
+                          | mask_expression (ELSE branch; references VAL or NULL)
+                          | comment | is_active   — the masking VOCABULARY;
+                          one policy per (tag, data_type). New rule = new row.
+  pii_columns.csv       : key | schema | table | column | tag | tag_value | is_active
+  masking_exemptions.csv: key | tag | role_type (FUNCTIONAL/SERVICE) | role | is_active
   human_users.csv       : key | username | login_name | email | default_role
                           | comment | is_active  (human users Terraform CREATES;
                           no passwords here — initial auth is set out-of-band /
@@ -237,20 +243,39 @@ def parse_functional_grants(rows):
     return result
 
 
-KNOWN_TAGS = {"PII_FINANCIAL"}  # tags defined in modules/og_env/governance.tf
+def parse_masking_rules(rows):
+    """Defines the masking VOCABULARY: one row = one (tag, data_type) policy.
+    A tag may span multiple data types (multiple rows) — each gets its own
+    policy, since a Snowflake masking policy has a fixed argument type.
+    mask_expression is the ELSE branch (what non-exempt roles see); it must
+    reference the argument VAL and return the row's data_type."""
+    result = {}
+    for row in rows:
+        tag = row["tag"].strip().upper()
+        data_type = row["data_type"].strip().upper()
+        base_type = data_type.split("(")[0]  # NUMBER(18,2) -> NUMBER
+        result[row["key"].strip()] = {
+            "tag": tag,
+            "allowed_values": _pipe(row.get("allowed_values", "")),
+            "data_type": data_type,
+            "mask_expression": row["mask_expression"].strip(),  # ELSE branch, references VAL
+            # Policy name is derived once here so Terraform (creates it) and
+            # apply_pii_tags.py (binds tag->policy) never disagree.
+            "policy_name": f"MASK_{tag}_{base_type}",
+            "comment": row["comment"].strip(),
+            "is_active": _bool(row["is_active"]),
+        }
+    return result
 
 
 def parse_pii_columns(rows):
     result = {}
     for row in rows:
-        tag = row["tag"].strip().upper()
-        if tag not in KNOWN_TAGS:
-            sys.exit(f"pii_columns: unknown tag '{tag}' (defined tags: {sorted(KNOWN_TAGS)})")
         result[row["key"].strip()] = {
             "schema": row["schema"].strip().upper(),
             "table": row["table"].strip().upper(),
             "column": row["column"].strip().upper(),
-            "tag": tag,
+            "tag": row["tag"].strip().upper(),
             "tag_value": row["tag_value"].strip(),
             "is_active": _bool(row["is_active"]),
         }
@@ -308,6 +333,7 @@ PARSERS = {
     "service_roles": ("service_roles.csv", "ServiceRoles", parse_service_roles),
     "functional_roles": ("functional_roles.csv", "FunctionalRoles", parse_functional_roles),
     "functional_grants": ("functional_grants.csv", "FunctionalGrants", parse_functional_grants),
+    "masking_rules": ("masking_rules.csv", "MaskingRules", parse_masking_rules),
     "pii_columns": ("pii_columns.csv", "PiiColumns", parse_pii_columns),
     "masking_exemptions": ("masking_exemptions.csv", "MaskingExemptions", parse_masking_exemptions),
     "human_users": ("human_users.csv", "HumanUsers", parse_human_users),
@@ -430,15 +456,38 @@ def validate(manifests):
             if p not in func_names:
                 sys.exit(f"functional_roles[{k}]: inherits_from unknown role '{p}'")
 
+    # Masking vocabulary is now data-driven: known tags come from ACTIVE
+    # masking_rules rows, not a hardcoded list. Adding a tag = a CSV row.
+    known_tags = {r["tag"] for r in manifests["masking_rules"].values() if r["is_active"]}
+    for k, r in manifests["masking_rules"].items():
+        if not r["is_active"]:
+            continue
+        if "VAL" not in r["mask_expression"] and r["mask_expression"].upper() != "NULL":
+            sys.exit(f"masking_rules[{k}]: mask_expression must reference VAL (or be NULL), got '{r['mask_expression']}'")
+    # One policy per (tag, data_type) — Snowflake allows multiple policies on a
+    # tag only if their data types differ; a duplicate pair is a collision.
+    seen_pairs = {}
+    for k, r in manifests["masking_rules"].items():
+        if not r["is_active"]:
+            continue
+        pair = (r["tag"], r["data_type"])
+        if pair in seen_pairs:
+            sys.exit(f"masking_rules[{k}]: duplicate (tag, data_type) {pair} also in '{seen_pairs[pair]}'")
+        seen_pairs[pair] = k
+
     for k, p in manifests["pii_columns"].items():
-        if p["is_active"] and p["schema"] not in schema_names:
+        if not p["is_active"]:
+            continue
+        if p["schema"] not in schema_names:
             sys.exit(f"pii_columns[{k}]: unknown schema '{p['schema']}'")
+        if p["tag"] not in known_tags:
+            sys.exit(f"pii_columns[{k}]: unknown tag '{p['tag']}' (define it in masking_rules.csv)")
 
     for k, ex in manifests["masking_exemptions"].items():
         if not ex["is_active"]:
             continue
-        if ex["tag"] not in KNOWN_TAGS:
-            sys.exit(f"masking_exemptions[{k}]: unknown tag '{ex['tag']}'")
+        if ex["tag"] not in known_tags:
+            sys.exit(f"masking_exemptions[{k}]: unknown tag '{ex['tag']}' (define it in masking_rules.csv)")
         if ex["role_type"] == "FUNCTIONAL" and ex["role"] not in func_names:
             sys.exit(f"masking_exemptions[{k}]: unknown functional role '{ex['role']}'")
         if ex["role_type"] == "SERVICE" and ex["role"] not in service_role_names:

@@ -19,6 +19,7 @@ module "env" {
   file_formats  = local.file_format_map
   tables        = local.table_map
 
+  masking_rules      = local.masking_rule_map
   masking_exemptions = local.masking_exemption_map
 
   # stages reference the account-level ADLS integration by name

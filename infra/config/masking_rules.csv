@@ -1,0 +1,4 @@
+key,tag,allowed_values,data_type,mask_expression,comment,is_active
+pii_financial_number,PII_FINANCIAL,arr,"NUMBER(18,2)",NULL,Financial PII (ARR) - fully masked below exempt roles,true
+pii_contact_email,PII_CONTACT,email,VARCHAR,"REGEXP_REPLACE(VAL, '^[^@]+', '****')",Contact PII (email) - mask local part; extensibility example,false
+pii_phone_number,PII_PHONE,phone,VARCHAR,"'***-***-' || RIGHT(VAL, 4)",Phone PII - show last 4 only; second tag added purely via CSV,false

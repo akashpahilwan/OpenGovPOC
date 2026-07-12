@@ -18,6 +18,7 @@ config/schemas.csv            schemas + kind (DATA / GOVERNANCE / DBT)
 config/service_roles.csv      pipeline identities + schema R/W sets + dbt flag
 config/functional_roles.csv   human roles + hierarchy (inherits_from/granted_to)
 config/functional_grants.csv  role × env × schema-pattern × R/W rules
+config/masking_rules.csv      masking VOCABULARY: tag x data_type x mask expr
 config/pii_columns.csv        column PII classifications (applied by apply_pii_tags.py)
 config/masking_exemptions.csv WHO sees unmasked PII (roles only, never users)
 config/human_users.csv        human users Terraform creates (no passwords)
@@ -137,18 +138,41 @@ is set on `ACCOUNT.ARR` (seed SQL) and re-applied by dbt post-hooks on every
 downstream `arr` column — classifying a column IS protecting it, at every
 layer, in all 10 future domains, with zero per-table policy wiring.
 
-## PII classification & who sees the data
+## PII masking — fully config-driven & extensible
 
-- **What is masked** — `config/pii_columns.csv` (schema/table/column → tag).
-  Applied by `python infra/apply_pii_tags.py --env DEV` — a script, NOT
-  Terraform, because Fivetran can drop/recreate its tables (stripping column
-  tags and drifting TF state); the script re-applies classification
-  idempotently — run it after the seed and after every Fivetran re-sync.
-- **Who sees it unmasked** — `config/masking_exemptions.csv` feeds the policy
-  body in Terraform (FUNCTIONAL = literal role, SERVICE = env-expanded).
-  Current: REVOPS_ADMIN + the two dbt ETL roles; everyone else reads NULL.
-- **Users are never exempted directly** — grant a user an exempt role via
-  user_roles.csv. Offboarding stays a single role revoke.
+Three CSVs, three questions, zero HCL to add a rule:
+
+- **What masking rules exist** — `config/masking_rules.csv`: one row per
+  `(tag, data_type)` → Terraform generates a tag (deduped across rows) and a
+  masking policy whose non-exempt branch is `mask_expression` (references
+  `VAL`). `NULL`, a partial reveal (`REGEXP_REPLACE(VAL,'^[^@]+','****')`), a
+  hash — anything valid for that data type. Adding `PII_CONTACT` masking
+  VARCHAR emails, or a second data type on an existing tag, is a CSV row.
+  `sync_config.py` rejects a duplicate `(tag, data_type)` (Snowflake allows
+  multiple policies on a tag only if their argument types differ) and any
+  `mask_expression` that doesn't reference `VAL`.
+- **What is classified** — `config/pii_columns.csv` (schema/table/column → tag).
+- **Who sees it unmasked** — `config/masking_exemptions.csv`, per tag
+  (FUNCTIONAL = literal role, SERVICE = env-expanded). Current PII_FINANCIAL:
+  REVOPS_ADMIN + the two dbt ETL roles; everyone else reads the mask.
+  Users are never exempted directly — grant an exempt role via user_roles.csv,
+  so offboarding stays a single role revoke.
+
+**Applying it:** Terraform creates the tags + policies. `apply_pii_tags.py`
+does the two things this provider version can't express as resources —
+binds each policy to its tag (`ALTER TAG ... SET MASKING POLICY`) and
+classifies columns (`ALTER TABLE ... SET TAG`) — both idempotent, from the
+same manifests. Run it after apply/seed and after every Fivetran re-sync
+(Fivetran recreating a table would strip column tags; TF state would drift,
+which is why this is a script):
+
+```bash
+python infra/apply_pii_tags.py --env DEV            # bind + classify
+python infra/apply_pii_tags.py --env PROD --dry-run # preview the SQL
+```
+
+`masking_rules.csv` ships two inactive examples (PII_CONTACT email, PII_PHONE)
+— flip `is_active` to see new tags+policies appear with no code change.
 
 ## Deploy
 

@@ -35,10 +35,12 @@ output "default_warehouse_by_function" {
   value       = local.wh_default
 }
 
-output "masking_policy_fqn" {
-  value = "${snowflake_database.db.name}.GOVERNANCE.${snowflake_masking_policy.mask_arr.name}"
+output "masking_policies" {
+  description = "rule key => masking policy FQN"
+  value       = { for k, p in snowflake_masking_policy.policy : k => p.fully_qualified_name }
 }
 
-output "pii_tag_fqn" {
-  value = "${snowflake_database.db.name}.GOVERNANCE.${snowflake_tag.pii_financial.name}"
+output "pii_tags" {
+  description = "tag name => tag FQN"
+  value       = { for t, tag in snowflake_tag.tag : t => tag.fully_qualified_name }
 }

@@ -1,15 +1,18 @@
 """
-apply_pii_tags.py — idempotently apply PII classification tags to columns,
-from resources/infrastructure/pii_columns.json (generated from
-config/pii_columns.csv by sync_config.py).
+apply_pii_tags.py — idempotently apply GOVERNANCE that Terraform can't, from
+the same config manifests. Two steps per env:
+
+  1. BIND each masking policy to its tag (ALTER TAG ... SET MASKING POLICY),
+     from resources/infrastructure/masking_rules.json. The snowflakedb/snowflake
+     ~> 2.18 provider has no tag->policy resource, so this lives here.
+  2. CLASSIFY columns (ALTER TABLE ... MODIFY COLUMN ... SET TAG), from
+     resources/infrastructure/pii_columns.json.
 
 WHY A SCRIPT, NOT TERRAFORM: the tagged columns live on Fivetran-owned tables
 that the connector may drop and recreate on a re-sync, which would silently
-strip column tags and permanently drift Terraform state. This script re-applies
-the classification from config on every run — schedule it after each Fivetran
-sync (or run it in CI after deploy/seed). Because the masking policy is
-attached to the TAG (Terraform-managed, GOVERNANCE schema), re-tagging a
-column re-protects it: classifying IS protecting.
+strip column tags and permanently drift Terraform state. This re-applies both
+steps from config on every run — schedule it after each Fivetran sync (and run
+it in CI after deploy/seed). Both operations are idempotent.
 
 Auth: same key-pair identity as Terraform (OG_DEPLOYER_SVC). Env vars:
   SF_ORGANIZATION_NAME, SF_ACCOUNT_NAME, SF_USERNAME, SF_PRIVATE_KEY_PATH
@@ -25,7 +28,9 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-MANIFEST = os.path.join(HERE, "resources", "infrastructure", "pii_columns.json")
+INFRA = os.path.join(HERE, "resources", "infrastructure")
+PII_MANIFEST = os.path.join(INFRA, "pii_columns.json")
+RULES_MANIFEST = os.path.join(INFRA, "masking_rules.json")
 
 
 def connect():
@@ -59,13 +64,23 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Print SQL without executing")
     args = parser.parse_args()
 
-    with open(MANIFEST, encoding="utf-8") as f:
+    db = f"OG_{args.env}_DB"
+
+    with open(RULES_MANIFEST, encoding="utf-8") as f:
+        masking_rules = json.load(f)["masking_rules"]
+    with open(PII_MANIFEST, encoding="utf-8") as f:
         pii_columns = json.load(f)["pii_columns"]
 
-    db = f"OG_{args.env}_DB"
-    statements = [
-        # ALTER ... SET TAG is idempotent: re-setting the same tag/value is a no-op,
-        # and re-setting after Fivetran recreated the table restores protection.
+    # Step 1: bind each active policy to its tag.
+    bind_stmts = [
+        f'ALTER TAG "{db}"."GOVERNANCE"."{r["tag"]}" '
+        f'SET MASKING POLICY "{db}"."GOVERNANCE"."{r["policy_name"]}"'
+        for r in masking_rules.values()
+        if r["is_active"]
+    ]
+    # Step 2: classify columns (idempotent SET TAG; restores tags after a
+    # Fivetran table recreate).
+    tag_stmts = [
         f'ALTER TABLE "{db}"."{p["schema"]}"."{p["table"]}" '
         f'MODIFY COLUMN "{p["column"]}" '
         f'SET TAG "{db}"."GOVERNANCE"."{p["tag"]}" = \'{p["tag_value"]}\''
@@ -73,28 +88,33 @@ def main():
         if p["is_active"]
     ]
 
-    if not statements:
-        print("No active pii_columns rows - nothing to do.")
+    if not bind_stmts and not tag_stmts:
+        print("No active masking rules or pii_columns - nothing to do.")
         return
 
     if args.dry_run:
-        print(f"-- {len(statements)} statement(s) for {db}:")
-        print(";\n".join(statements) + ";")
+        print(f"-- {len(bind_stmts)} tag->policy binding(s), {len(tag_stmts)} column tag(s) for {db}:")
+        print(";\n".join(bind_stmts + tag_stmts) + ";")
         return
 
     conn = connect()
     try:
         cur = conn.cursor()
-        ok, failed = 0, 0
-        for stmt in statements:
+        ok, failed, skipped = 0, 0, 0
+        for stmt in bind_stmts + tag_stmts:
             try:
                 cur.execute(stmt)
                 ok += 1
-                print(f"OK      {stmt}")
-            except Exception as e:  # e.g. table not synced/seeded yet — report, don't abort
-                failed += 1
-                print(f"FAILED  {stmt}\n        {e}")
-        print(f"\n{ok} applied, {failed} failed.")
+                print(f"OK       {stmt}")
+            except Exception as e:
+                # "already has a masking policy" => binding already in place; idempotent no-op.
+                if "already" in str(e).lower():
+                    skipped += 1
+                    print(f"SKIP     {stmt}  (already applied)")
+                else:  # e.g. table not synced/seeded yet — report, don't abort the batch
+                    failed += 1
+                    print(f"FAILED   {stmt}\n         {e}")
+        print(f"\n{ok} applied, {skipped} already-set, {failed} failed.")
         if failed:
             sys.exit(1)
     finally:
