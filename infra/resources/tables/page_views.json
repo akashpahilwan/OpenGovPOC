@@ -4,20 +4,20 @@
     {
       "name": "EVENT_ID",
       "type": "VARCHAR(64)",
-      "nullable": false,
-      "comment": "Contract key - promoted for dedup and pruning"
+      "nullable": true,
+      "comment": "Contract key - promoted from payload; NULLABLE so malformed records still land (schema-on-read: RAW keeps the full set, quarantine flags the bad ones)"
     },
     {
       "name": "ACCOUNT_ID",
       "type": "VARCHAR(64)",
-      "nullable": false,
-      "comment": "Contract key - promoted for joins/pruning"
+      "nullable": true,
+      "comment": "Contract key - promoted from payload; nullable (see EVENT_ID)"
     },
     {
       "name": "EVENT_TIMESTAMP",
       "type": "TIMESTAMP_NTZ",
-      "nullable": false,
-      "comment": "Contract key - event time (not load time)"
+      "nullable": true,
+      "comment": "Contract key - event time; nullable (see EVENT_ID)"
     },
     {
       "name": "PAYLOAD",

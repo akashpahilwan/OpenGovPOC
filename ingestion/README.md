@@ -18,9 +18,11 @@ move server-side, not through this host.
 2. **validate** (Python) – contract fields must be present & non-null:
    `event_id`, `account_id`, `event_timestamp` (the brief's keys) + `user_id`
    (required for attribution — this is what quarantines the mock's null-user row).
-3. **load** – valid rows **append** to `PAGE_VIEWS` (RAW is an immutable log —
-   `INSERT`, never `MERGE`); invalid rows **append** to `PAGE_VIEWS_QUARANTINE`
-   with a reason; one summary row to `PAGE_VIEWS_LOAD_LOG`.
+3. **load** – the **full set** of records **appends** to `PAGE_VIEWS` (RAW is an
+   immutable schema-on-read log — `INSERT`, never `MERGE`; malformed rows land
+   too, with NULL promoted columns, so nothing is ever dropped). Invalid rows
+   **also** get an audit row in `PAGE_VIEWS_QUARANTINE` with a reason. One
+   summary row goes to `PAGE_VIEWS_LOAD_LOG`.
 4. **commit** – all three commit together. Any **exception → rollback** the whole
    file (clean state to retry). Quarantining is normal, not an error: a file with
    some bad rows still commits (partial load + quarantine).
@@ -45,10 +47,15 @@ export SF_USERNAME=OG_INGEST_ADLS_SVC          # needs its RSA key attached (ALT
 export SF_PRIVATE_KEY_PATH=/path/to/ingest_key.p8
 # role/warehouse default to REVOPS_INGESTION_ADLS / OG_<ENV>_INGEST_XS_WH
 
-python ingest_page_views.py --env DEV                          # incremental (skip loaded files)
-python ingest_page_views.py --env DEV --path dt=2026-05-01/hr=09   # scope to a folder
-python ingest_page_views.py --env DEV --path dt=2026-05-01/hr=09 --backfill   # reprocess a folder
+python ingest_page_views.py --env DEV                              # incremental (skip loaded files)
+python ingest_page_views.py --env DEV --path dt=2026-05-01/hr=09   # scope to a day/hour folder
+python ingest_page_views.py --env DEV --path dt=2026-05-01/hr=09 --backfill   # reprocess that folder
+python ingest_page_views.py --env DEV --backfill                   # FULL-SET backfill (every file)
 ```
+
+Backfill/reprocess is idempotent per file: a file's prior rows are cleared from
+all three tables and re-inserted, so reprocessing (a folder or the full set)
+never duplicates rows — including quarantine.
 
 Path layout: `og-telemetry/<env>/product_events/page_views/dt=YYYY-MM-DD/hr=HH/`
 (`hr` is 24-hour, `00`–`23`).

@@ -12,10 +12,12 @@ APPROACH (see infra/README.md for the security rationale):
 PER-FILE PIPELINE (one Snowflake transaction per file — atomic):
   1. read     — SELECT the file's records through the stage (VARIANT per event)
   2. validate — in Python: contract fields must be present & non-null
-  3. load     — valid rows APPEND to PAGE_VIEWS (RAW is an immutable log — we
-                INSERT, never MERGE/UPDATE), invalid rows APPEND to
-                PAGE_VIEWS_QUARANTINE (with a reason), one summary row APPEND to
-                PAGE_VIEWS_LOAD_LOG
+  3. load     — the FULL SET of records APPENDs to PAGE_VIEWS (RAW is an
+                immutable schema-on-read log — nothing is dropped; malformed
+                rows land too, with NULL promoted columns), invalid rows ALSO
+                get an audit row in PAGE_VIEWS_QUARANTINE (with a reason), and
+                one summary row goes to PAGE_VIEWS_LOAD_LOG. INSERT, never
+                MERGE/UPDATE.
   4. commit    — all three writes commit together; ANY exception rolls the whole
                 file back (no half-loaded file, no orphan log row). Quarantining
                 is normal operation, NOT an error: a file with some bad records
@@ -160,10 +162,11 @@ def _delete_file_rows(cur, table_fqn: str, filename_col: str, filename: str):
     cur.execute(f"DELETE FROM {table_fqn} WHERE {filename_col} = ?", (filename,))
 
 
-def append_valid(cur, cfg: EventConfig, rows):
-    """rows: [(event_id, account_id, event_ts, payload_str, filename)].
-    APPEND-ONLY INSERT into RAW (no MERGE) — RAW is an immutable landing log;
-    event_id dedup happens downstream in dbt staging."""
+def append_records(cur, cfg: EventConfig, rows):
+    """rows: [(event_id, account_id, event_ts, payload_str, filename)] for the
+    FULL SET (valid AND invalid). APPEND-ONLY INSERT into RAW (no MERGE) — RAW
+    is an immutable schema-on-read log that keeps every landed record; promoted
+    columns are NULL for malformed rows. event_id dedup happens in dbt staging."""
     if not rows:
         return 0
     values = ",".join(["(?,?,?,?,?)"] * len(rows))
@@ -196,15 +199,15 @@ def process_file(conn, cfg: EventConfig, filename: str, records):
     """records: [payload_json_str]. Idempotent per file: clear this file's old
     rows, then write valid + quarantine + log — all in ONE transaction, so a
     file is all-or-nothing and never leaves duplicates for itself."""
-    valid, quarantine = [], []
+    all_rows, quarantine = [], []
     for payload_str in records:
         rec = json.loads(payload_str)
         reason = validate(rec, cfg)
-        if reason:
+        # FULL SET lands in RAW — promoted keys are best-effort (None -> NULL).
+        all_rows.append((rec.get("event_id"), rec.get("account_id"),
+                         rec.get("event_timestamp"), payload_str, filename))
+        if reason:  # invalid records ALSO get an audit row in quarantine
             quarantine.append((reason, payload_str, filename))
-        else:
-            valid.append((rec["event_id"], rec["account_id"], rec["event_timestamp"],
-                          payload_str, filename))
 
     cur = conn.cursor()
     try:
@@ -213,14 +216,14 @@ def process_file(conn, cfg: EventConfig, filename: str, records):
         _delete_file_rows(cur, f"{cfg.schema}.{cfg.quarantine_table}", "_filename", filename)
         _delete_file_rows(cur, f"{cfg.schema}.{cfg.load_log_table}", "file_name", filename)
 
-        loaded = append_valid(cur, cfg, valid)
-        quar = append_quarantine(cur, cfg, quarantine)
+        loaded = append_records(cur, cfg, all_rows)   # full set -> RAW
+        quar = append_quarantine(cur, cfg, quarantine)  # bad ones -> quarantine audit
         cur.execute(
             f"INSERT INTO {cfg.schema}.{cfg.load_log_table} "
             f"(file_name, records_processed, records_quarantined) VALUES (?, ?, ?)",
             (filename, loaded, quar),
         )
-        conn.commit()  # partial load + quarantine + log, atomically
+        conn.commit()  # full-set load + quarantine + log, atomically
         return loaded, quar
     except Exception:
         conn.rollback()  # unexpected error => whole file back to clean state
@@ -238,10 +241,15 @@ def main():
     ap.add_argument("--path", default=None,
                     help="scope to a sub-prefix, e.g. dt=2026-05-01/hr=09 (backfill a folder)")
     ap.add_argument("--backfill", action="store_true",
-                    help="reprocess files even if already in the load log (event_id MERGE dedups)")
+                    help="reprocess files even if already in the load log. With --path, "
+                         "backfills that folder; with NO --path, FULL-SET backfill of every "
+                         "file under the env prefix. Each file is idempotently replaced.")
     args = ap.parse_args()
 
     cfg = EVENTS[args.event]
+    if args.backfill:
+        scope = args.path if args.path else "ALL files under the env prefix (full-set backfill)"
+        print(f"BACKFILL mode: reprocessing {scope} — files replaced idempotently.")
     conn = connect(args.env)
     conn.cursor().execute(f"USE SCHEMA OG_{args.env}_DB.{cfg.schema}")
     try:
