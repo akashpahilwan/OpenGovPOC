@@ -98,24 +98,42 @@ DESC STORAGE INTEGRATION OG_ADLS_INT;
 
 ## Role model (Snowflake-recommended two tiers)
 
-**Tier 1 — access roles** (never granted to users): `AR_<ENV>_<SCHEMA>_R`
-(usage + select, current & future) and `AR_<ENV>_<SCHEMA>_W` (all schema
-privileges + DML + future ownership, so writers can ALTER/DROP what they create).
+> **Functional roles and their assignments are NOT env/DB-centric.** There is
+> ONE account-wide set of functional roles — a person or service holds a role,
+> not a per-env copy of it. **The same role applies to both `OG_DEV_DB` and
+> `OG_PROD_DB`** (e.g. `REVOPS_READER` reads the layers in DEV *and* PROD; the
+> dbt `REVOPS_DEVELOPER` builds in DEV *and* PROD). The environment dimension
+> lives entirely in the **access-role tier** (`AR_<ENV>_<SCHEMA>`), which each
+> functional role composes per env via `functional_grants.csv` `env=ALL` rows.
+> You never assign a separate DEV role and PROD role to the same identity —
+> one grant, both databases.
 
-**Tier 2 — functional roles** (account-wide; the privileges live here, so a
-role spans both envs). Five roles, kept deliberately simple:
+**Tier 1 — access roles** (never granted to users; the ONLY env-scoped layer):
+`AR_<ENV>_<SCHEMA>_R` (usage + select, current & future) and
+`AR_<ENV>_<SCHEMA>_W` (all schema privileges + DML + future ownership, so
+writers can ALTER/DROP what they create).
 
-| Role | Access |
-|---|---|
-| `REVOPS_ANALYST` | read `MARTS_REVOPS` (DEV + PROD) |
-| `REVOPS_DEVELOPER` | analyst + **read/write `RAW` + `STAGING` + `MARTS`** (DEV + PROD) — this is the role dbt jobs run as to build models, including in PROD |
-| `REVOPS_ADMIN` | full domain access; the only role that sees unmasked ARR |
-| `REVOPS_INGESTION_ADLS` | write `PRODUCT_EVENTS_RAW_ADLS` (Python/ADLS telemetry loader) |
-| `REVOPS_INGESTION_FIVETRAN` | all privileges on tables + views in `SALESFORCE_RAW_FIVETRAN` (Fivetran connector) |
+**Tier 2 — functional roles** (account-wide; privileges live here). Six roles:
 
-Hierarchy: `REVOPS_ANALYST → REVOPS_DEVELOPER → REVOPS_ADMIN → SYSADMIN`; the
-two ingestion roles hang off `SYSADMIN` directly (each tier declares only its
-increment; inheritance supplies the rest).
+| Role | Access | Held by |
+|---|---|---|
+| `REVOPS_ANALYST` | read `MARTS_REVOPS` (all envs) | humans |
+| `REVOPS_READER` | read RAW + STAGING + MARTS (all envs) | humans (developers) |
+| `REVOPS_DEVELOPER` | read/write RAW + STAGING + MARTS (all envs), incl PROD | **service only** (dbt CI job) — never humans |
+| `REVOPS_ADMIN` | full domain access; only role that sees unmasked ARR | humans (break-glass) |
+| `REVOPS_INGESTION_ADLS` | write `PRODUCT_EVENTS_RAW_ADLS` | service only (Python loader) |
+| `REVOPS_INGESTION_FIVETRAN` | all privileges on tables + views in `SALESFORCE_RAW_FIVETRAN` | service only (Fivetran) |
+
+Hierarchy: `REVOPS_ANALYST → REVOPS_READER → REVOPS_DEVELOPER → REVOPS_ADMIN →
+SYSADMIN`; the two ingestion roles hang off `SYSADMIN` directly (each tier
+declares only its increment; inheritance supplies the rest).
+
+`human_assignable=false` (config/functional_roles.csv) marks the service-only
+roles; `sync_config.py` **rejects** any attempt to grant one to a human
+(user_roles.csv / human_users.default_role). Humans who develop hold
+`REVOPS_READER` + a personal DEV sandbox (`REVOPS_DEV_<NAME>`, write granted
+directly to their user) — read everything, write only their own schema;
+shared + PROD writes happen only through the dbt CI job as `REVOPS_DEVELOPER`.
 
 **Service users** (`config/service_users.csv`) — `TYPE = SERVICE`, key-pair
 JWT only (passwords impossible). Each holds exactly one functional role:
