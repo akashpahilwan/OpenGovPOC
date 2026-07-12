@@ -3,28 +3,14 @@
     "analyst_marts": {
       "role": "REVOPS_ANALYST",
       "env": "ALL",
-      "schema": "MARTS_REVOPS",
+      "schema": "MARTS_*",
       "level": "R",
       "is_active": true
     },
-    "reader_raw_fivetran": {
+    "reader_all": {
       "role": "REVOPS_READER",
       "env": "ALL",
-      "schema": "SALESFORCE_RAW_FIVETRAN",
-      "level": "R",
-      "is_active": true
-    },
-    "reader_raw_adls": {
-      "role": "REVOPS_READER",
-      "env": "ALL",
-      "schema": "PRODUCT_EVENTS_RAW_ADLS",
-      "level": "R",
-      "is_active": true
-    },
-    "reader_staging": {
-      "role": "REVOPS_READER",
-      "env": "ALL",
-      "schema": "STAGING",
+      "schema": "*",
       "level": "R",
       "is_active": true
     },

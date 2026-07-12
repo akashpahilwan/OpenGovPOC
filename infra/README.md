@@ -177,6 +177,13 @@ Three CSVs, three questions, zero HCL to add a rule:
   never exempted directly — grant an exempt role via user_roles.csv, so
   offboarding stays a single role revoke.
 
+> **Deploy-order rule:** the tag→policy binding is NOT a Terraform resource, so
+> a `terraform apply` that refreshes/recreates a governance tag DROPS the
+> binding. **Always run `apply_pii_tags.py` after `terraform apply`** (and in
+> CI, right after the infra step) to restore `ALTER TAG … SET MASKING POLICY` +
+> column classifications. Symptom if skipped: a tagged column returns real
+> values to non-exempt roles.
+
 **Applying it:** Terraform creates the tags + policies. `apply_pii_tags.py`
 does the two things this provider version can't express as resources —
 binds each policy to its tag (`ALTER TAG ... SET MASKING POLICY`) and
