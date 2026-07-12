@@ -11,10 +11,8 @@
     },
     "revops_reader": {
       "name": "REVOPS_READER",
-      "comment": "Read RAW + STAGING + MARTS (technical read-only for developers)",
-      "inherits_from": [
-        "REVOPS_ANALYST"
-      ],
+      "comment": "Read all schemas but NOT sensitive financials (sibling of ANALYST - does NOT inherit it)",
+      "inherits_from": [],
       "granted_to": "",
       "warehouse": "ANALYTICS",
       "human_assignable": true,
@@ -22,9 +20,10 @@
     },
     "revops_developer": {
       "name": "REVOPS_DEVELOPER",
-      "comment": "Read/write RAW + STAGING + MARTS (all envs); SERVICE-ONLY - the role dbt jobs run as incl PROD; never assigned to humans",
+      "comment": "Read/write RAW + STAGING + MARTS (all envs); SERVICE-ONLY - dbt role incl PROD; inherits READER (read-all) + ANALYST (financial-exempt)",
       "inherits_from": [
-        "REVOPS_READER"
+        "REVOPS_READER",
+        "REVOPS_ANALYST"
       ],
       "granted_to": "",
       "warehouse": "TRANSFORM",

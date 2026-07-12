@@ -11,6 +11,12 @@
       "role_type": "FUNCTIONAL",
       "role": "REVOPS_DEVELOPER",
       "is_active": true
+    },
+    "analyst_sees_mart_financials": {
+      "tag": "PII_FINANCIAL",
+      "role_type": "FUNCTIONAL",
+      "role": "REVOPS_ANALYST",
+      "is_active": true
     }
   }
 }
