@@ -24,7 +24,8 @@ provider "snowflake" {
   user              = var.SF_USERNAME
   authenticator     = "SNOWFLAKE_JWT"
   private_key       = var.SF_PRIVATE_KEY
-  role              = "OG_DEPLOYER" # bootstrap_deployer.sql created this
+  role              = "OG_DEPLOYER"    # bootstrap_deployer.sql created this
+  warehouse         = var.SF_WAREHOUSE # some resource reads (tags/policy refs) need compute
 
   # Several v2 resources are still gated behind preview flags in ~> 2.18
   # (same pattern as the SnowOps stack).

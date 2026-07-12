@@ -18,6 +18,12 @@ variable "SF_USERNAME" {
   default     = "OG_DEPLOYER_SVC"
 }
 
+variable "SF_WAREHOUSE" {
+  type        = string
+  description = "Warehouse for the deployer session — must exist before apply (bootstrap creates OG_DEPLOYER_WH). Some reads (tag policy refs) need compute."
+  default     = "OG_DEPLOYER_WH"
+}
+
 variable "SF_PRIVATE_KEY" {
   type        = string
   sensitive   = true

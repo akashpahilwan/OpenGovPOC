@@ -41,6 +41,18 @@ GRANT APPLY TAG            ON ACCOUNT TO ROLE OG_DEPLOYER;
 
 GRANT ROLE OG_DEPLOYER TO ROLE SYSADMIN;
 
+-- Deployer's own tiny warehouse. Terraform needs an active warehouse in the
+-- session for a few resource reads (e.g. tag policy references), and this must
+-- exist BEFORE the first apply — so it lives here, not in Terraform. Owned by
+-- OG_DEPLOYER (ownership implies USAGE).
+CREATE WAREHOUSE IF NOT EXISTS OG_DEPLOYER_WH
+  WAREHOUSE_SIZE = 'XSMALL'
+  AUTO_SUSPEND   = 60
+  AUTO_RESUME    = TRUE
+  INITIALLY_SUSPENDED = TRUE
+  COMMENT = 'OpenGov POC - Terraform/CI deployer session compute';
+GRANT USAGE ON WAREHOUSE OG_DEPLOYER_WH TO ROLE OG_DEPLOYER;
+
 -- Service user for Terraform / CI. TYPE = SERVICE: no password, no MFA —
 -- key-pair (JWT) auth only, which is what the GitHub Actions pipeline uses.
 CREATE USER IF NOT EXISTS OG_DEPLOYER_SVC
