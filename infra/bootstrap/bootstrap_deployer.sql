@@ -32,6 +32,13 @@ GRANT CREATE INTEGRATION ON ACCOUNT TO ROLE OG_DEPLOYER;
 -- (e.g. wiring access roles into functional roles).
 GRANT MANAGE GRANTS    ON ACCOUNT TO ROLE OG_DEPLOYER;
 
+-- Central-governance rights for apply_pii_tags.py (runs as OG_DEPLOYER):
+--   APPLY MASKING POLICY -> ALTER TAG ... SET MASKING POLICY (tag<->policy bind)
+--   APPLY TAG            -> ALTER TABLE ... SET TAG on any object, even ones
+--                          whose ownership the seed transfers to the AR_*_W role.
+GRANT APPLY MASKING POLICY ON ACCOUNT TO ROLE OG_DEPLOYER;
+GRANT APPLY TAG            ON ACCOUNT TO ROLE OG_DEPLOYER;
+
 GRANT ROLE OG_DEPLOYER TO ROLE SYSADMIN;
 
 -- Service user for Terraform / CI. TYPE = SERVICE: no password, no MFA —
