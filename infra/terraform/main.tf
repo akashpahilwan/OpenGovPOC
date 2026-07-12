@@ -161,7 +161,10 @@ resource "snowflake_service_user" "svc" {
   comment  = each.value.comment
   # default_role must be set by name; the role is granted below.
   default_role = each.value.role
-  depends_on   = [snowflake_account_role.functional]
+  # Manage the public key in TF (not out-of-band) so applies never wipe it.
+  # Public key is not a secret; the private key lives only with the CI/owner.
+  rsa_public_key = each.value.rsa_public_key != "" ? each.value.rsa_public_key : null
+  depends_on     = [snowflake_account_role.functional]
 }
 
 resource "snowflake_grant_account_role" "svc_user_role" {

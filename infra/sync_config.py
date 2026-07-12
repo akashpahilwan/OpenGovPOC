@@ -207,6 +207,9 @@ def parse_service_users(rows):
             "name": row["name"].strip().upper(),
             "role": row["role"].strip().upper(),
             "warehouse": row["warehouse"].strip().upper(),  # function name for default wh
+            # Public key managed in TF so a terraform apply never wipes it
+            # (public key is not a secret). Empty = no key set yet.
+            "rsa_public_key": row.get("rsa_public_key", "").strip(),
             "comment": row["comment"].strip(),
             "is_active": _bool(row["is_active"]),
         }
