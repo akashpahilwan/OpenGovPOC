@@ -237,6 +237,41 @@ def parse_functional_grants(rows):
     return result
 
 
+KNOWN_TAGS = {"PII_FINANCIAL"}  # tags defined in modules/og_env/governance.tf
+
+
+def parse_pii_columns(rows):
+    result = {}
+    for row in rows:
+        tag = row["tag"].strip().upper()
+        if tag not in KNOWN_TAGS:
+            sys.exit(f"pii_columns: unknown tag '{tag}' (defined tags: {sorted(KNOWN_TAGS)})")
+        result[row["key"].strip()] = {
+            "schema": row["schema"].strip().upper(),
+            "table": row["table"].strip().upper(),
+            "column": row["column"].strip().upper(),
+            "tag": tag,
+            "tag_value": row["tag_value"].strip(),
+            "is_active": _bool(row["is_active"]),
+        }
+    return result
+
+
+def parse_masking_exemptions(rows):
+    result = {}
+    for row in rows:
+        role_type = row["role_type"].strip().upper()
+        if role_type not in ("FUNCTIONAL", "SERVICE"):
+            sys.exit(f"masking_exemptions: role_type must be FUNCTIONAL or SERVICE, got '{role_type}'")
+        result[row["key"].strip()] = {
+            "tag": row["tag"].strip().upper(),
+            "role_type": role_type,
+            "role": row["role"].strip().upper(),
+            "is_active": _bool(row["is_active"]),
+        }
+    return result
+
+
 def parse_human_users(rows):
     result = {}
     for row in rows:
@@ -273,6 +308,8 @@ PARSERS = {
     "service_roles": ("service_roles.csv", "ServiceRoles", parse_service_roles),
     "functional_roles": ("functional_roles.csv", "FunctionalRoles", parse_functional_roles),
     "functional_grants": ("functional_grants.csv", "FunctionalGrants", parse_functional_grants),
+    "pii_columns": ("pii_columns.csv", "PiiColumns", parse_pii_columns),
+    "masking_exemptions": ("masking_exemptions.csv", "MaskingExemptions", parse_masking_exemptions),
     "human_users": ("human_users.csv", "HumanUsers", parse_human_users),
     "user_roles": ("user_roles.csv", "UserRoles", parse_user_roles),
 }
@@ -392,6 +429,20 @@ def validate(manifests):
         for p in fr["inherits_from"]:
             if p not in func_names:
                 sys.exit(f"functional_roles[{k}]: inherits_from unknown role '{p}'")
+
+    for k, p in manifests["pii_columns"].items():
+        if p["is_active"] and p["schema"] not in schema_names:
+            sys.exit(f"pii_columns[{k}]: unknown schema '{p['schema']}'")
+
+    for k, ex in manifests["masking_exemptions"].items():
+        if not ex["is_active"]:
+            continue
+        if ex["tag"] not in KNOWN_TAGS:
+            sys.exit(f"masking_exemptions[{k}]: unknown tag '{ex['tag']}'")
+        if ex["role_type"] == "FUNCTIONAL" and ex["role"] not in func_names:
+            sys.exit(f"masking_exemptions[{k}]: unknown functional role '{ex['role']}'")
+        if ex["role_type"] == "SERVICE" and ex["role"] not in service_role_names:
+            sys.exit(f"masking_exemptions[{k}]: unknown service role '{ex['role']}'")
 
     for k, hu in manifests["human_users"].items():
         if hu["is_active"] and hu["default_role"] and hu["default_role"] not in func_names:

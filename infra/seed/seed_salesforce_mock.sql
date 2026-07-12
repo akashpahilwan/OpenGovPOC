@@ -66,15 +66,15 @@ INSERT INTO OPPORTUNITY VALUES
   ('0061g000004FFFFF', '0011g00001ZzZzZz', 'usr_owner_03', 'Prospecting',    60000.00, '2026-10-15', '2026-06-25 14:10:00', '2026-07-05 16:00:00', TRUE,  CURRENT_TIMESTAMP());
 
 -- ── Wire tag-based masking ───────────────────────────────────────────────────
--- 1) Attach the masking policy to the tag (once per env; idempotent).
---    From here on, ANY column tagged PII_FINANCIAL with a NUMBER type is
---    masked automatically — this is the "scales to 10 domains" answer.
+-- Attach the masking policy to the tag (once per env; idempotent). From here
+-- on, ANY column tagged PII_FINANCIAL with a NUMBER type is masked
+-- automatically — this is the "scales to 10 domains" answer.
 ALTER TAG GOVERNANCE.PII_FINANCIAL
   SET MASKING POLICY GOVERNANCE.MASK_ARR_NUMBER;
 
--- 2) Classify the column. Tagging IS protecting.
-ALTER TABLE ACCOUNT MODIFY COLUMN arr
-  SET TAG OG_<% env %>_DB.GOVERNANCE.PII_FINANCIAL = 'arr';
+-- Column classification is NOT done here: config/pii_columns.csv is the
+-- source of truth, applied idempotently by infra/apply_pii_tags.py (run it
+-- after this seed, and after every Fivetran re-sync in production).
 
 -- ── Hand the schema to its rightful owner ────────────────────────────────────
 -- Future objects in this schema are owned by the Fivetran access role

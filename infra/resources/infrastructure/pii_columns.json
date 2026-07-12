@@ -1,0 +1,12 @@
+{
+  "pii_columns": {
+    "arr_raw": {
+      "schema": "SALESFORCE_RAW_FIVETRAN",
+      "table": "ACCOUNT",
+      "column": "ARR",
+      "tag": "PII_FINANCIAL",
+      "tag_value": "arr",
+      "is_active": true
+    }
+  }
+}

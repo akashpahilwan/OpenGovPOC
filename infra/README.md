@@ -18,6 +18,8 @@ config/schemas.csv            schemas + kind (DATA / GOVERNANCE / DBT)
 config/service_roles.csv      pipeline identities + schema R/W sets + dbt flag
 config/functional_roles.csv   human roles + hierarchy (inherits_from/granted_to)
 config/functional_grants.csv  role × env × schema-pattern × R/W rules
+config/pii_columns.csv        column PII classifications (applied by apply_pii_tags.py)
+config/masking_exemptions.csv WHO sees unmasked PII (roles only, never users)
 config/human_users.csv        human users Terraform creates (no passwords)
 config/user_roles.csv         user → functional role assignments
 ```
@@ -134,6 +136,19 @@ The policy is attached to the `GOVERNANCE.PII_FINANCIAL` **tag**, and the tag
 is set on `ACCOUNT.ARR` (seed SQL) and re-applied by dbt post-hooks on every
 downstream `arr` column — classifying a column IS protecting it, at every
 layer, in all 10 future domains, with zero per-table policy wiring.
+
+## PII classification & who sees the data
+
+- **What is masked** — `config/pii_columns.csv` (schema/table/column → tag).
+  Applied by `python infra/apply_pii_tags.py --env DEV` — a script, NOT
+  Terraform, because Fivetran can drop/recreate its tables (stripping column
+  tags and drifting TF state); the script re-applies classification
+  idempotently — run it after the seed and after every Fivetran re-sync.
+- **Who sees it unmasked** — `config/masking_exemptions.csv` feeds the policy
+  body in Terraform (FUNCTIONAL = literal role, SERVICE = env-expanded).
+  Current: REVOPS_ADMIN + the two dbt ETL roles; everyone else reads NULL.
+- **Users are never exempted directly** — grant a user an exempt role via
+  user_roles.csv. Offboarding stays a single role revoke.
 
 ## Deploy
 

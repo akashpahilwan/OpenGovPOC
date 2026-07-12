@@ -35,6 +35,14 @@ locals {
   functional_grants    = jsondecode(file("${path.module}/../resources/infrastructure/functional_grants.json"))["functional_grants"]
   functional_grant_map = { for k, v in local.functional_grants : k => v if v.is_active }
 
+  masking_exemptions    = jsondecode(file("${path.module}/../resources/infrastructure/masking_exemptions.json"))["masking_exemptions"]
+  masking_exemption_map = { for k, v in local.masking_exemptions : k => v if v.is_active }
+
+  # pii_columns.json is consumed by apply_pii_tags.py (NOT Terraform): the
+  # tagged columns live on Fivetran-owned tables that the connector can drop
+  # and recreate — Terraform state would drift. The script re-applies tags
+  # idempotently after every sync/seed.
+
   human_users    = jsondecode(file("${path.module}/../resources/infrastructure/human_users.json"))["human_users"]
   human_user_map = { for k, v in local.human_users : k => v if v.is_active }
 

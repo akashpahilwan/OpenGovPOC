@@ -32,11 +32,14 @@ resource "snowflake_tag" "pii_financial" {
 }
 
 locals {
-  # Unmasked readers: REVOPS_ADMIN + every dbt_project service role from
-  # config (ETL must read real values or it would persist NULLs downstream).
+  # Unmasked readers — config-driven (config/masking_exemptions.csv).
+  # FUNCTIONAL = literal account-wide role; SERVICE = env-expanded here.
+  # dbt ETL roles must be exempt or they would PERSIST NULLs downstream.
   masking_exempt_roles = concat(
-    ["REVOPS_ADMIN"],
-    [for name in sort(tolist(local.dbt_project_roles)) : snowflake_account_role.service[name].name],
+    sort([for k, v in var.masking_exemptions : v.role
+    if v.is_active && v.role_type == "FUNCTIONAL" && v.tag == "PII_FINANCIAL"]),
+    sort([for k, v in var.masking_exemptions : snowflake_account_role.service[v.role].name
+    if v.is_active && v.role_type == "SERVICE" && v.tag == "PII_FINANCIAL"]),
   )
 }
 

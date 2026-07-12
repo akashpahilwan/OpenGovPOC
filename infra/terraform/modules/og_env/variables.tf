@@ -83,6 +83,24 @@ variable "tables" {
   EOT
 }
 
+variable "masking_exemptions" {
+  type = map(object({
+    tag       = string
+    role_type = string # FUNCTIONAL (literal role name) | SERVICE (base name, env-expanded)
+    role      = string
+    is_active = bool
+  }))
+  default     = {}
+  description = <<-EOT
+    WHO SEES UNMASKED PII — from config/masking_exemptions.csv. Each active row
+    exempts a role from the masking policy attached to that tag. FUNCTIONAL
+    roles are account-wide names (REVOPS_ADMIN); SERVICE roles are base names
+    expanded to this env (DBT_HUB -> OG_DBT_HUB_<ENV>). Everyone else gets NULL.
+    Users are never exempted directly — grant them an exempt role instead
+    (user_roles.csv), so offboarding stays a single role revoke.
+  EOT
+}
+
 variable "file_formats" {
   type = map(object({
     name        = string

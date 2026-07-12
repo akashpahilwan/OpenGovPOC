@@ -19,6 +19,8 @@ module "env" {
   file_formats  = local.file_format_map
   tables        = local.table_map
 
+  masking_exemptions = local.masking_exemption_map
+
   # stages reference the account-level ADLS integration by name
   depends_on = [snowflake_storage_integration.integration]
 }
