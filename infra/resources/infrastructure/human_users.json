@@ -4,8 +4,8 @@
       "username": "SOURABH_SHINDE",
       "login_name": "sourabh.shinde@opengov.com",
       "email": "sourabh.shinde@opengov.com",
-      "default_role": "REVOPS_DEVELOPER",
-      "comment": "RevOps developer - onboarded 2026-07-12",
+      "default_role": "REVOPS_READER",
+      "comment": "RevOps developer (read-only human access; writes happen via dbt CI as REVOPS_DEVELOPER)",
       "is_active": true
     }
   }

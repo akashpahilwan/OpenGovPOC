@@ -171,6 +171,29 @@ resource "snowflake_grant_account_role" "svc_user_role" {
   depends_on = [snowflake_account_role.functional]
 }
 
+# ── Personal dev sandboxes — write to OWN schema only (DEV) ──────────────────
+# A developer reads all layers via REVOPS_READER but writes nothing shared.
+# Their personal sandbox (OG_DEV_DB.REVOPS_DEV_<NAME>) write role is granted
+# straight to their user — so they can build/iterate dbt models in their own
+# schema without touching STAGING/MARTS/PROD (that path is the dbt CI job as
+# REVOPS_DEVELOPER). Guarded to active human_users.
+
+locals {
+  dev_developers  = contains(keys(local.env_map), "DEV") ? local.env_map["DEV"].developers : []
+  human_usernames = toset([for k, v in local.human_user_map : v.username])
+  sandbox_owner_grants = {
+    for name in local.dev_developers : name => name
+    if contains(local.human_usernames, name)
+  }
+}
+
+resource "snowflake_grant_account_role" "personal_sandbox_owner" {
+  for_each   = local.sandbox_owner_grants
+  role_name  = module.env["DEV"].access_roles_write["REVOPS_DEV_${each.key}"]
+  user_name  = each.key
+  depends_on = [snowflake_user.human]
+}
+
 # ── dbt Projects on Snowflake — REVOPS_DEVELOPER runs them (DEV + PROD) ──────
 # The role that builds models needs CREATE DBT PROJECT + USAGE on each env's
 # DBT schema. (Native "dbt Projects on Snowflake" objects live in OG_<ENV>_DB.DBT.)

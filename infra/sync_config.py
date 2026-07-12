@@ -222,6 +222,9 @@ def parse_functional_roles(rows):
             "inherits_from": _pipe(row.get("inherits_from", "")),
             "granted_to": row.get("granted_to", "").strip().upper(),
             "warehouse": row.get("warehouse", "").strip().upper(),
+            # human_assignable=false => SERVICE-ONLY (e.g. REVOPS_DEVELOPER,
+            # ingestion roles). A human user must never be granted it.
+            "human_assignable": _bool(row.get("human_assignable", "true")),
             "is_active": _bool(row["is_active"]),
         }
     return result
@@ -492,14 +495,22 @@ def validate(manifests):
             continue
         if ex["tag"] not in known_tags:
             sys.exit(f"masking_exemptions[{k}]: unknown tag '{ex['tag']}' (define it in masking_rules.csv)")
-        if ex["role_type"] == "FUNCTIONAL" and ex["role"] not in func_names:
+        if ex["role"] not in func_names:
             sys.exit(f"masking_exemptions[{k}]: unknown functional role '{ex['role']}'")
-        if ex["role_type"] == "SERVICE" and ex["role"] not in service_role_names:
-            sys.exit(f"masking_exemptions[{k}]: unknown service role '{ex['role']}'")
 
+    # SERVICE-ONLY roles (human_assignable=false) must never reach a human.
+    human_ok = {v["name"] for v in manifests["functional_roles"].values()
+                if v["is_active"] and v.get("human_assignable", True)}
     for k, hu in manifests["human_users"].items():
-        if hu["is_active"] and hu["default_role"] and hu["default_role"] not in func_names:
+        if not hu["is_active"]:
+            continue
+        if hu["default_role"] and hu["default_role"] not in func_names:
             sys.exit(f"human_users[{k}]: default_role '{hu['default_role']}' is not an active functional role")
+        if hu["default_role"] and hu["default_role"] not in human_ok:
+            sys.exit(f"human_users[{k}]: default_role '{hu['default_role']}' is SERVICE-ONLY (human_assignable=false)")
+    for k, ur in manifests["user_roles"].items():
+        if ur["is_active"] and ur["role_name"] not in human_ok:
+            sys.exit(f"user_roles[{k}]: role '{ur['role_name']}' is SERVICE-ONLY (human_assignable=false) - humans cannot hold it")
 
     for k, g in manifests["functional_grants"].items():
         if not g["is_active"]:

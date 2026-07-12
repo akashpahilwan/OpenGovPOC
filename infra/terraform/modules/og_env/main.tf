@@ -25,7 +25,7 @@ locals {
   # Individual dbt sandboxes — dbt-recommended schema-per-developer dev pattern.
   sandbox_schemas = {
     for d in var.developers :
-    "REVOPS_DEV_${upper(d)}" => { comment = "Personal dbt sandbox for ${upper(d)} - namespace isolation, shared REVOPS_DEVELOPER access" }
+    "REVOPS_DEV_${upper(d)}" => { comment = "Personal dbt sandbox for ${upper(d)} - write granted directly to that user only (read-all via REVOPS_READER)" }
   }
 
   # Config-driven schemas (config/schemas.csv) + generated sandboxes.

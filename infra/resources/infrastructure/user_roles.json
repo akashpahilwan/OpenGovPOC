@@ -5,9 +5,9 @@
       "role_name": "REVOPS_ADMIN",
       "is_active": false
     },
-    "demo_developer": {
+    "demo_reader": {
       "username": "AKASH_PAHILWAN",
-      "role_name": "REVOPS_DEVELOPER",
+      "role_name": "REVOPS_READER",
       "is_active": false
     },
     "demo_analyst": {
@@ -15,9 +15,9 @@
       "role_name": "REVOPS_ANALYST",
       "is_active": false
     },
-    "sourabh_developer": {
+    "sourabh_reader": {
       "username": "SOURABH_SHINDE",
-      "role_name": "REVOPS_DEVELOPER",
+      "role_name": "REVOPS_READER",
       "is_active": true
     }
   }

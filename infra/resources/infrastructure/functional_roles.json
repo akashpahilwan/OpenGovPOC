@@ -6,16 +6,29 @@
       "inherits_from": [],
       "granted_to": "",
       "warehouse": "ANALYTICS",
+      "human_assignable": true,
       "is_active": true
     },
-    "revops_developer": {
-      "name": "REVOPS_DEVELOPER",
-      "comment": "Read/write RAW + STAGING + MARTS (all envs); the role dbt jobs use to build models incl. PROD",
+    "revops_reader": {
+      "name": "REVOPS_READER",
+      "comment": "Read RAW + STAGING + MARTS (technical read-only for developers)",
       "inherits_from": [
         "REVOPS_ANALYST"
       ],
       "granted_to": "",
+      "warehouse": "ANALYTICS",
+      "human_assignable": true,
+      "is_active": true
+    },
+    "revops_developer": {
+      "name": "REVOPS_DEVELOPER",
+      "comment": "Read/write RAW + STAGING + MARTS (all envs); SERVICE-ONLY - the role dbt jobs run as incl PROD; never assigned to humans",
+      "inherits_from": [
+        "REVOPS_READER"
+      ],
+      "granted_to": "",
       "warehouse": "TRANSFORM",
+      "human_assignable": false,
       "is_active": true
     },
     "revops_admin": {
@@ -26,22 +39,25 @@
       ],
       "granted_to": "SYSADMIN",
       "warehouse": "TRANSFORM",
+      "human_assignable": true,
       "is_active": true
     },
     "revops_ingestion_adls": {
       "name": "REVOPS_INGESTION_ADLS",
-      "comment": "Write RAW telemetry (PRODUCT_EVENTS_RAW_ADLS) - Python/ADLS loader",
+      "comment": "Write RAW telemetry (PRODUCT_EVENTS_RAW_ADLS) - Python/ADLS loader; service-only",
       "inherits_from": [],
       "granted_to": "SYSADMIN",
       "warehouse": "INGEST",
+      "human_assignable": false,
       "is_active": true
     },
     "revops_ingestion_fivetran": {
       "name": "REVOPS_INGESTION_FIVETRAN",
-      "comment": "All privileges on tables+views in RAW Salesforce (SALESFORCE_RAW_FIVETRAN) - Fivetran connector",
+      "comment": "All privileges on tables+views in RAW Salesforce (SALESFORCE_RAW_FIVETRAN) - Fivetran connector; service-only",
       "inherits_from": [],
       "granted_to": "SYSADMIN",
       "warehouse": "INGEST",
+      "human_assignable": false,
       "is_active": true
     }
   }
