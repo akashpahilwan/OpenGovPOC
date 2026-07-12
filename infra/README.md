@@ -71,7 +71,12 @@ Terraform (as OG_DEPLOYER) deploys the full ingestion contract:
 - `PAGE_VIEWS_STAGE` — external stage per env over the env's path prefix (config/stages.csv)
 - `FF_JSON` — JSON file format, `strip_outer_array` (config/file_formats.csv)
 - `PAGE_VIEWS`, `PAGE_VIEWS_QUARANTINE`, `PAGE_VIEWS_LOAD_LOG` — stable-DDL raw
-  tables (promoted keys + `payload VARIANT`), in `modules/og_env/storage_objects.tf`
+  tables (promoted keys + `payload VARIANT`), config-driven SnowOps-style:
+  manifest in `config/tables.csv`, column definitions in
+  `resources/tables/<key>.json`, deployed per env by Terraform via CI/CD.
+  **Custom-ingestion schemas only** — Fivetran-owned schemas never appear in
+  tables.csv (the connector manages that DDL; sync_config.py enforces this).
+  Adding a raw table for a new event type = one CSV row + one JSON file in a PR.
 
 Because the platform owns this DDL, `AR_<ENV>_PRODUCT_EVENTS_RAW_ADLS_W` is
 **DML-only** (`writer_owns_future=false` in schemas.csv): the loader can

@@ -1,0 +1,44 @@
+{
+  "table_config": {},
+  "columns": [
+    {
+      "name": "EVENT_ID",
+      "type": "VARCHAR(64)",
+      "nullable": false,
+      "comment": "Contract key - promoted for dedup and pruning"
+    },
+    {
+      "name": "ACCOUNT_ID",
+      "type": "VARCHAR(64)",
+      "nullable": false,
+      "comment": "Contract key - promoted for joins/pruning"
+    },
+    {
+      "name": "EVENT_TIMESTAMP",
+      "type": "TIMESTAMP_NTZ",
+      "nullable": false,
+      "comment": "Contract key - event time (not load time)"
+    },
+    {
+      "name": "PAYLOAD",
+      "type": "VARIANT",
+      "nullable": true,
+      "comment": "Full event JSON - schema-on-read; new upstream fields land here with no DDL"
+    },
+    {
+      "name": "_FILENAME",
+      "type": "VARCHAR(500)",
+      "nullable": true,
+      "comment": "Source file lineage (stage-relative path)"
+    },
+    {
+      "name": "_LOADED_AT",
+      "type": "TIMESTAMP_NTZ",
+      "nullable": false,
+      "default": {
+        "expression": "CURRENT_TIMESTAMP()"
+      },
+      "comment": "Load time - dedup tiebreaker in staging"
+    }
+  ]
+}

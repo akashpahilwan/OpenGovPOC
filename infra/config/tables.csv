@@ -1,0 +1,4 @@
+key,name,schema,change_tracking,comment,is_active
+page_views,PAGE_VIEWS,PRODUCT_EVENTS_RAW_ADLS,false,Telemetry landing - append-only; dedup on event_id happens in dbt staging,true
+page_views_quarantine,PAGE_VIEWS_QUARANTINE,PRODUCT_EVENTS_RAW_ADLS,false,Records failing contract validation (missing event_id/account_id/event_timestamp),true
+page_views_load_log,PAGE_VIEWS_LOAD_LOG,PRODUCT_EVENTS_RAW_ADLS,false,One summary row per ingestion run - audit trail that outlives COPY_HISTORY retention,true

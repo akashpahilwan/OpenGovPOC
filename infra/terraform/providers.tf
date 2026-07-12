@@ -33,5 +33,6 @@ provider "snowflake" {
     "snowflake_stage_resource",
     "snowflake_file_format_resource",
     "snowflake_table_resource",
+    "snowflake_table_constraint_resource",
   ]
 }

@@ -17,6 +17,7 @@ module "env" {
   service_roles = local.service_role_map
   stages        = local.stage_map
   file_formats  = local.file_format_map
+  tables        = local.table_map
 
   # stages reference the account-level ADLS integration by name
   depends_on = [snowflake_storage_integration.integration]

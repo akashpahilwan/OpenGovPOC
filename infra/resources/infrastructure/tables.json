@@ -1,0 +1,25 @@
+{
+  "tables": {
+    "page_views": {
+      "name": "PAGE_VIEWS",
+      "schema": "PRODUCT_EVENTS_RAW_ADLS",
+      "change_tracking": false,
+      "comment": "Telemetry landing - append-only; dedup on event_id happens in dbt staging",
+      "is_active": true
+    },
+    "page_views_quarantine": {
+      "name": "PAGE_VIEWS_QUARANTINE",
+      "schema": "PRODUCT_EVENTS_RAW_ADLS",
+      "change_tracking": false,
+      "comment": "Records failing contract validation (missing event_id/account_id/event_timestamp)",
+      "is_active": true
+    },
+    "page_views_load_log": {
+      "name": "PAGE_VIEWS_LOAD_LOG",
+      "schema": "PRODUCT_EVENTS_RAW_ADLS",
+      "change_tracking": false,
+      "comment": "One summary row per ingestion run - audit trail that outlives COPY_HISTORY retention",
+      "is_active": true
+    }
+  }
+}

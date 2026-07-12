@@ -23,6 +23,9 @@ locals {
   file_formats    = jsondecode(file("${path.module}/../resources/infrastructure/file_formats.json"))["file_formats"]
   file_format_map = { for k, v in local.file_formats : k => v if v.is_active }
 
+  tables    = jsondecode(file("${path.module}/../resources/infrastructure/tables.json"))["tables"]
+  table_map = { for k, v in local.tables : k => v if v.is_active }
+
   service_roles    = jsondecode(file("${path.module}/../resources/infrastructure/service_roles.json"))["service_roles"]
   service_role_map = { for k, v in local.service_roles : v.name => v if v.is_active }
 

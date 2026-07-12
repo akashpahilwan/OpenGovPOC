@@ -182,7 +182,7 @@ resource "snowflake_grant_privileges_to_account_role" "w_dml_existing_tables" {
       in_schema          = "\"${local.db_name}\".\"${each.key}\""
     }
   }
-  depends_on = [snowflake_schema.schema, snowflake_table.page_views, snowflake_table.quarantine, snowflake_table.load_log]
+  depends_on = [snowflake_schema.schema, snowflake_table.table]
 }
 
 resource "snowflake_grant_privileges_to_account_role" "w_dml_future_tables" {

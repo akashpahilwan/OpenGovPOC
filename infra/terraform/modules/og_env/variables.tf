@@ -67,6 +67,22 @@ variable "stages" {
   description = "Stages to create in this env — from config/stages.csv."
 }
 
+variable "tables" {
+  type = map(object({
+    name            = string
+    schema          = string
+    change_tracking = bool
+    comment         = string
+    is_active       = bool
+  }))
+  default     = {}
+  description = <<-EOT
+    Deployer-owned RAW tables for custom-ingestion schemas — from
+    config/tables.csv; column definitions in resources/tables/<key>.json
+    (SnowOps pattern). Never used for Fivetran-owned schemas.
+  EOT
+}
+
 variable "file_formats" {
   type = map(object({
     name        = string

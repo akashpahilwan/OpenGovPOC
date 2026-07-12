@@ -33,6 +33,11 @@ Column reference
                           | url ({env} placeholder -> lowercase env prefix)
                           | storage_integration | comment | is_active
   file_formats.csv      : key | name | schema | format_type | comment | is_active
+  tables.csv            : key | name | schema | change_tracking | comment | is_active
+                          (deployer-owned tables for CUSTOM ingestion schemas
+                          only — Fivetran creates its own tables. Column
+                          definitions live in resources/tables/<key>.json,
+                          hand-authored, SnowOps style.)
   service_roles.csv     : key | name | comment | read_schemas (pipe) | write_schemas (pipe)
                           | warehouse (INGEST/TRANSFORM/ANALYTICS) | dbt_project | is_active
   functional_roles.csv  : key | name | comment | inherits_from (pipe)
@@ -158,6 +163,19 @@ def parse_stages(rows):
     return result
 
 
+def parse_tables(rows):
+    result = {}
+    for row in rows:
+        result[row["key"].strip()] = {
+            "name": row["name"].strip().upper(),
+            "schema": row["schema"].strip().upper(),
+            "change_tracking": _bool(row.get("change_tracking", "false")),
+            "comment": row["comment"].strip(),
+            "is_active": _bool(row["is_active"]),
+        }
+    return result
+
+
 def parse_file_formats(rows):
     result = {}
     for row in rows:
@@ -251,6 +269,7 @@ PARSERS = {
     "storage_integrations": ("storage_integrations.csv", "StorageIntegrations", parse_storage_integrations),
     "stages": ("stages.csv", "Stages", parse_stages),
     "file_formats": ("file_formats.csv", "FileFormats", parse_file_formats),
+    "tables": ("tables.csv", "Tables", parse_tables),
     "service_roles": ("service_roles.csv", "ServiceRoles", parse_service_roles),
     "functional_roles": ("functional_roles.csv", "FunctionalRoles", parse_functional_roles),
     "functional_grants": ("functional_grants.csv", "FunctionalGrants", parse_functional_grants),
@@ -340,6 +359,30 @@ def validate(manifests):
     for k, ff in manifests["file_formats"].items():
         if ff["is_active"] and ff["schema"] not in schema_names:
             sys.exit(f"file_formats[{k}]: unknown schema '{ff['schema']}'")
+
+    # Tables: only for custom-ingestion schemas (never Fivetran-owned ones,
+    # where the connector manages DDL); each needs a column-definition JSON.
+    fivetran_owned = {
+        v["schema"] for v in manifests["schemas"].values()
+        if v["is_active"] and v["schema"].endswith("_FIVETRAN")
+    }
+    for k, t in manifests["tables"].items():
+        if not t["is_active"]:
+            continue
+        if t["schema"] not in schema_names:
+            sys.exit(f"tables[{k}]: unknown schema '{t['schema']}'")
+        if t["schema"] in fivetran_owned:
+            sys.exit(f"tables[{k}]: schema '{t['schema']}' is Fivetran-owned - the connector manages its DDL")
+        col_file = os.path.join(HERE, "resources", "tables", f"{k}.json")
+        if not os.path.exists(col_file):
+            sys.exit(f"tables[{k}]: missing column definition file resources/tables/{k}.json")
+        with open(col_file, encoding="utf-8") as f:
+            try:
+                cols = json.load(f).get("columns", [])
+            except json.JSONDecodeError as e:
+                sys.exit(f"tables[{k}]: invalid JSON in resources/tables/{k}.json ({e})")
+        if not cols:
+            sys.exit(f"tables[{k}]: resources/tables/{k}.json has no columns")
 
     for k, fr in manifests["functional_roles"].items():
         if not fr["is_active"]:

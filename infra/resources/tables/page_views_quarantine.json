@@ -1,0 +1,31 @@
+{
+  "table_config": {},
+  "columns": [
+    {
+      "name": "REASON",
+      "type": "VARCHAR(500)",
+      "nullable": false,
+      "comment": "Which contract rule failed (e.g. missing event_id)"
+    },
+    {
+      "name": "PAYLOAD",
+      "type": "VARIANT",
+      "nullable": true,
+      "comment": "The rejected record, unmodified - replayable after a fix"
+    },
+    {
+      "name": "_FILENAME",
+      "type": "VARCHAR(500)",
+      "nullable": true,
+      "comment": "Source file lineage"
+    },
+    {
+      "name": "_QUARANTINED_AT",
+      "type": "TIMESTAMP_NTZ",
+      "nullable": false,
+      "default": {
+        "expression": "CURRENT_TIMESTAMP()"
+      }
+    }
+  ]
+}

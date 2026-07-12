@@ -1,0 +1,31 @@
+{
+  "table_config": {},
+  "columns": [
+    {
+      "name": "FILE_NAME",
+      "type": "VARCHAR(500)",
+      "nullable": false,
+      "comment": "Processed file (stage-relative path)"
+    },
+    {
+      "name": "RECORDS_PROCESSED",
+      "type": "NUMBER(18,0)",
+      "nullable": false,
+      "comment": "Rows loaded into PAGE_VIEWS from this file"
+    },
+    {
+      "name": "RECORDS_QUARANTINED",
+      "type": "NUMBER(18,0)",
+      "nullable": false,
+      "comment": "Rows routed to PAGE_VIEWS_QUARANTINE from this file"
+    },
+    {
+      "name": "LOAD_TIMESTAMP",
+      "type": "TIMESTAMP_NTZ",
+      "nullable": false,
+      "default": {
+        "expression": "CURRENT_TIMESTAMP()"
+      }
+    }
+  ]
+}
