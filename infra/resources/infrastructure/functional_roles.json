@@ -5,7 +5,7 @@
       "comment": "Read MARTS only",
       "inherits_from": [],
       "granted_to": "",
-      "warehouse": "ANALYTICS",
+      "warehouse": "ANALYST",
       "human_assignable": true,
       "is_active": true
     },
@@ -14,7 +14,7 @@
       "comment": "Read all schemas but NOT sensitive financials (sibling of ANALYST - does NOT inherit it)",
       "inherits_from": [],
       "granted_to": "",
-      "warehouse": "ANALYTICS",
+      "warehouse": "READER",
       "human_assignable": true,
       "is_active": true
     },
@@ -26,7 +26,7 @@
         "REVOPS_ANALYST"
       ],
       "granted_to": "",
-      "warehouse": "TRANSFORM",
+      "warehouse": "DEVELOPER",
       "human_assignable": false,
       "is_active": true
     },
@@ -37,7 +37,7 @@
         "REVOPS_DEVELOPER"
       ],
       "granted_to": "SYSADMIN",
-      "warehouse": "TRANSFORM",
+      "warehouse": "ADMIN",
       "human_assignable": true,
       "is_active": true
     },
@@ -46,7 +46,7 @@
       "comment": "Write RAW telemetry (PRODUCT_EVENTS_RAW_ADLS) - Python/ADLS loader; service-only",
       "inherits_from": [],
       "granted_to": "SYSADMIN",
-      "warehouse": "INGEST",
+      "warehouse": "INGEST_ADLS",
       "human_assignable": false,
       "is_active": true
     },
@@ -55,7 +55,7 @@
       "comment": "All privileges on tables+views in RAW Salesforce (SALESFORCE_RAW_FIVETRAN) - Fivetran connector; service-only",
       "inherits_from": [],
       "granted_to": "SYSADMIN",
-      "warehouse": "INGEST",
+      "warehouse": "INGEST_FIVETRAN",
       "human_assignable": false,
       "is_active": true
     }

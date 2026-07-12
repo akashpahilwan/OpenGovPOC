@@ -1,4 +1,4 @@
 key,name,role,warehouse,comment,is_active
-dbt,OG_DBT_SVC,REVOPS_DEVELOPER,TRANSFORM,dbt job identity - builds models in DEV and PROD via REVOPS_DEVELOPER,true
-ingest_adls,OG_INGEST_ADLS_SVC,REVOPS_INGESTION_ADLS,INGEST,Python/ADLS telemetry loader,true
-fivetran,OG_FIVETRAN_SVC,REVOPS_INGESTION_FIVETRAN,INGEST,Fivetran connector identity,true
+dbt,OG_DBT_SVC,REVOPS_DEVELOPER,DEVELOPER,dbt job identity - builds models in DEV and PROD via REVOPS_DEVELOPER,true
+ingest_adls,OG_INGEST_ADLS_SVC,REVOPS_INGESTION_ADLS,INGEST_ADLS,Python/ADLS telemetry loader,true
+fivetran,OG_FIVETRAN_SVC,REVOPS_INGESTION_FIVETRAN,INGEST_FIVETRAN,Fivetran connector identity,true

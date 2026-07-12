@@ -1,43 +1,51 @@
 {
   "warehouses": {
-    "ingest_xs": {
-      "function": "INGEST",
+    "analyst": {
+      "function": "ANALYST",
       "size": "XSMALL",
       "auto_suspend": 60,
       "is_default": true,
-      "comment": "routine hourly loads - Fivetran + Python S3 ingestion",
+      "comment": "Dedicated wh for REVOPS_ANALYST (per-role isolation + cost attribution)",
       "is_active": true
     },
-    "ingest_l": {
-      "function": "INGEST",
-      "size": "LARGE",
-      "auto_suspend": 60,
-      "is_default": false,
-      "comment": "backfills / full refresh loads - opt in via USE WAREHOUSE",
-      "is_active": true
-    },
-    "transform_xs": {
-      "function": "TRANSFORM",
+    "reader": {
+      "function": "READER",
       "size": "XSMALL",
       "auto_suspend": 60,
       "is_default": true,
-      "comment": "routine dbt hub + spoke runs",
+      "comment": "Dedicated wh for REVOPS_READER",
       "is_active": true
     },
-    "transform_l": {
-      "function": "TRANSFORM",
-      "size": "LARGE",
-      "auto_suspend": 60,
-      "is_default": false,
-      "comment": "dbt full-refresh / large builds - opt in via USE WAREHOUSE",
-      "is_active": true
-    },
-    "analytics_xs": {
-      "function": "ANALYTICS",
+    "developer": {
+      "function": "DEVELOPER",
       "size": "XSMALL",
       "auto_suspend": 60,
       "is_default": true,
-      "comment": "human queries - analysts and developers",
+      "comment": "Dedicated wh for REVOPS_DEVELOPER (dbt jobs)",
+      "is_active": true
+    },
+    "admin": {
+      "function": "ADMIN",
+      "size": "XSMALL",
+      "auto_suspend": 60,
+      "is_default": true,
+      "comment": "Dedicated wh for REVOPS_ADMIN",
+      "is_active": true
+    },
+    "ingest_adls": {
+      "function": "INGEST_ADLS",
+      "size": "XSMALL",
+      "auto_suspend": 60,
+      "is_default": true,
+      "comment": "Dedicated wh for REVOPS_INGESTION_ADLS (Python/ADLS loader)",
+      "is_active": true
+    },
+    "ingest_fivetran": {
+      "function": "INGEST_FIVETRAN",
+      "size": "XSMALL",
+      "auto_suspend": 60,
+      "is_default": true,
+      "comment": "Dedicated wh for REVOPS_INGESTION_FIVETRAN",
       "is_active": true
     }
   }

@@ -1,6 +1,7 @@
 key,function,size,auto_suspend,is_default,comment,is_active
-ingest_xs,INGEST,XSMALL,60,true,routine hourly loads - Fivetran + Python S3 ingestion,true
-ingest_l,INGEST,LARGE,60,false,backfills / full refresh loads - opt in via USE WAREHOUSE,true
-transform_xs,TRANSFORM,XSMALL,60,true,routine dbt hub + spoke runs,true
-transform_l,TRANSFORM,LARGE,60,false,dbt full-refresh / large builds - opt in via USE WAREHOUSE,true
-analytics_xs,ANALYTICS,XSMALL,60,true,human queries - analysts and developers,true
+analyst,ANALYST,XSMALL,60,true,Dedicated wh for REVOPS_ANALYST (per-role isolation + cost attribution),true
+reader,READER,XSMALL,60,true,Dedicated wh for REVOPS_READER,true
+developer,DEVELOPER,XSMALL,60,true,Dedicated wh for REVOPS_DEVELOPER (dbt jobs),true
+admin,ADMIN,XSMALL,60,true,Dedicated wh for REVOPS_ADMIN,true
+ingest_adls,INGEST_ADLS,XSMALL,60,true,Dedicated wh for REVOPS_INGESTION_ADLS (Python/ADLS loader),true
+ingest_fivetran,INGEST_FIVETRAN,XSMALL,60,true,Dedicated wh for REVOPS_INGESTION_FIVETRAN,true
