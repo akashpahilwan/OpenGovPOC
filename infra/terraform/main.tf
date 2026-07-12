@@ -210,6 +210,23 @@ resource "snowflake_grant_account_role" "personal_sandbox_owner" {
 # (apply_column_tags post-hook) — governance travels RAW -> marts. Least
 # privilege: APPLY on each specific governance TAG (OG_DEPLOYER owns the tags,
 # so it can grant this — unlike account-wide APPLY TAG which needs ACCOUNTADMIN).
+# REVOPS_READER "reads all schemas": the * grant covers DATA schemas (via
+# access roles) but not the special GOVERNANCE / DBT schemas (no access roles).
+# Grant USAGE so a reader can see them too (visibility only).
+resource "snowflake_grant_privileges_to_account_role" "reader_meta_schema_usage" {
+  for_each = merge([
+    for env_key, m in module.env : {
+      for s in ["GOVERNANCE", "DBT"] : "${env_key}.${s}" => { db = m.database, schema = s }
+    }
+  ]...)
+  account_role_name = "REVOPS_READER"
+  privileges        = ["USAGE"]
+  on_schema {
+    schema_name = "\"${each.value.db}\".\"${each.value.schema}\""
+  }
+  depends_on = [snowflake_account_role.functional]
+}
+
 # dbt (REVOPS_DEVELOPER) must resolve the GOVERNANCE tag to SET it in the
 # apply_column_tags post-hook -> needs USAGE on the GOVERNANCE schema (APPLY on
 # the tag alone isn't enough to reference the fully-qualified tag).
