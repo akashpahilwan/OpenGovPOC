@@ -1,7 +1,7 @@
 key,function,size,auto_suspend,is_default,comment,is_active
-analyst,ANALYST,XSMALL,60,true,Dedicated wh for REVOPS_ANALYST (per-role isolation + cost attribution),true
+analyst,ANALYST,MEDIUM,60,true,Dedicated wh for REVOPS_ANALYST (MEDIUM - heavier BI/analytics queries),true
 reader,READER,XSMALL,60,true,Dedicated wh for REVOPS_READER,true
-developer,DEVELOPER,XSMALL,60,true,Dedicated wh for REVOPS_DEVELOPER (dbt jobs),true
+developer,DEVELOPER,MEDIUM,60,true,Dedicated wh for REVOPS_DEVELOPER (MEDIUM - dbt builds),true
 admin,ADMIN,XSMALL,60,true,Dedicated wh for REVOPS_ADMIN,true
 ingest_adls,INGEST_ADLS,XSMALL,60,true,Dedicated wh for REVOPS_INGESTION_ADLS (Python/ADLS loader),true
 ingest_fivetran,INGEST_FIVETRAN,XSMALL,60,true,Dedicated wh for REVOPS_INGESTION_FIVETRAN,true

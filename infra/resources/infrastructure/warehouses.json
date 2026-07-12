@@ -2,10 +2,10 @@
   "warehouses": {
     "analyst": {
       "function": "ANALYST",
-      "size": "XSMALL",
+      "size": "MEDIUM",
       "auto_suspend": 60,
       "is_default": true,
-      "comment": "Dedicated wh for REVOPS_ANALYST (per-role isolation + cost attribution)",
+      "comment": "Dedicated wh for REVOPS_ANALYST (MEDIUM - heavier BI/analytics queries)",
       "is_active": true
     },
     "reader": {
@@ -18,10 +18,10 @@
     },
     "developer": {
       "function": "DEVELOPER",
-      "size": "XSMALL",
+      "size": "MEDIUM",
       "auto_suspend": 60,
       "is_default": true,
-      "comment": "Dedicated wh for REVOPS_DEVELOPER (dbt jobs)",
+      "comment": "Dedicated wh for REVOPS_DEVELOPER (MEDIUM - dbt builds)",
       "is_active": true
     },
     "admin": {
