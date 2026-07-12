@@ -198,6 +198,25 @@ resource "snowflake_grant_account_role" "personal_sandbox_owner" {
 # The role that builds models needs CREATE DBT PROJECT + USAGE on each env's
 # DBT schema. (Native "dbt Projects on Snowflake" objects live in OG_<ENV>_DB.DBT.)
 
+# dbt (REVOPS_DEVELOPER) applies Snowflake column tags on marts it builds
+# (apply_column_tags post-hook) — governance travels RAW -> marts. Least
+# privilege: APPLY on each specific governance TAG (OG_DEPLOYER owns the tags,
+# so it can grant this — unlike account-wide APPLY TAG which needs ACCOUNTADMIN).
+resource "snowflake_grant_privileges_to_account_role" "developer_apply_tag" {
+  for_each = merge([
+    for env_key, m in module.env : {
+      for tag_name, fqn in m.pii_tags : "${env_key}.${tag_name}" => fqn
+    }
+  ]...)
+  account_role_name = "REVOPS_DEVELOPER"
+  privileges        = ["APPLY"]
+  on_schema_object {
+    object_type = "TAG"
+    object_name = each.value
+  }
+  depends_on = [snowflake_account_role.functional]
+}
+
 resource "snowflake_grant_privileges_to_account_role" "developer_dbt_project" {
   for_each          = module.env
   account_role_name = "REVOPS_DEVELOPER"
