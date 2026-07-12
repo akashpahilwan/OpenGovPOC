@@ -7,17 +7,52 @@
       "level": "R",
       "is_active": true
     },
+    "developer_raw_fivetran": {
+      "role": "REVOPS_DEVELOPER",
+      "env": "ALL",
+      "schema": "SALESFORCE_RAW_FIVETRAN",
+      "level": "W",
+      "is_active": true
+    },
+    "developer_raw_adls": {
+      "role": "REVOPS_DEVELOPER",
+      "env": "ALL",
+      "schema": "PRODUCT_EVENTS_RAW_ADLS",
+      "level": "W",
+      "is_active": true
+    },
     "developer_staging": {
       "role": "REVOPS_DEVELOPER",
       "env": "ALL",
       "schema": "STAGING",
-      "level": "R",
+      "level": "W",
+      "is_active": true
+    },
+    "developer_marts": {
+      "role": "REVOPS_DEVELOPER",
+      "env": "ALL",
+      "schema": "MARTS_REVOPS",
+      "level": "W",
       "is_active": true
     },
     "admin_all_write": {
       "role": "REVOPS_ADMIN",
       "env": "ALL",
       "schema": "*",
+      "level": "W",
+      "is_active": true
+    },
+    "ingestion_adls_raw": {
+      "role": "REVOPS_INGESTION_ADLS",
+      "env": "ALL",
+      "schema": "PRODUCT_EVENTS_RAW_ADLS",
+      "level": "W",
+      "is_active": true
+    },
+    "ingestion_fivetran_raw": {
+      "role": "REVOPS_INGESTION_FIVETRAN",
+      "env": "ALL",
+      "schema": "SALESFORCE_RAW_FIVETRAN",
       "level": "W",
       "is_active": true
     }

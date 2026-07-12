@@ -132,20 +132,3 @@ variable "file_formats" {
   description = "File formats to create in this env — from config/file_formats.csv."
 }
 
-variable "service_roles" {
-  type = map(object({
-    comment       = string
-    read_schemas  = list(string)
-    write_schemas = list(string)
-    warehouse     = string # INGEST | TRANSFORM | ANALYTICS
-    dbt_project   = bool   # true => CREATE DBT PROJECT + governance tag rights + masking exemption
-    is_active     = bool
-  }))
-  description = <<-EOT
-    Service roles for this env, keyed by base name (FIVETRAN, INGEST, DBT_HUB,
-    DBT_REVOPS, ...) — from config/service_roles.csv. Each becomes role
-    OG_<NAME>_<ENV> + user OG_<NAME>_SVC_<ENV>. dbt_project roles are exempt
-    from the ARR masking policy (they must not persist masked NULLs) and can
-    create native DBT PROJECT objects.
-  EOT
-}

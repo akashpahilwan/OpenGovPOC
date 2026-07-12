@@ -1,0 +1,25 @@
+{
+  "service_users": {
+    "dbt": {
+      "name": "OG_DBT_SVC",
+      "role": "REVOPS_DEVELOPER",
+      "warehouse": "TRANSFORM",
+      "comment": "dbt job identity - builds models in DEV and PROD via REVOPS_DEVELOPER",
+      "is_active": true
+    },
+    "ingest_adls": {
+      "name": "OG_INGEST_ADLS_SVC",
+      "role": "REVOPS_INGESTION_ADLS",
+      "warehouse": "INGEST",
+      "comment": "Python/ADLS telemetry loader",
+      "is_active": true
+    },
+    "fivetran": {
+      "name": "OG_FIVETRAN_SVC",
+      "role": "REVOPS_INGESTION_FIVETRAN",
+      "warehouse": "INGEST",
+      "comment": "Fivetran connector identity",
+      "is_active": true
+    }
+  }
+}

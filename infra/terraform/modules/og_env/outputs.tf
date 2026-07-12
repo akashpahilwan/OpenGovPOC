@@ -12,14 +12,6 @@ output "access_roles_write" {
   value       = { for s, r in snowflake_account_role.ar_write : s => r.name }
 }
 
-output "service_roles" {
-  value = { for k, r in snowflake_account_role.service : k => r.name }
-}
-
-output "service_users" {
-  value = { for k, u in snowflake_service_user.svc : k => u.name }
-}
-
 output "warehouses" {
   description = "warehouse key => name (e.g. ingest_xs => OG_DEV_INGEST_XS_WH)"
   value       = { for k, w in snowflake_warehouse.wh : k => w.name }

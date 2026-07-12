@@ -26,8 +26,8 @@ locals {
   tables    = jsondecode(file("${path.module}/../resources/infrastructure/tables.json"))["tables"]
   table_map = { for k, v in local.tables : k => v if v.is_active }
 
-  service_roles    = jsondecode(file("${path.module}/../resources/infrastructure/service_roles.json"))["service_roles"]
-  service_role_map = { for k, v in local.service_roles : v.name => v if v.is_active }
+  service_users    = jsondecode(file("${path.module}/../resources/infrastructure/service_users.json"))["service_users"]
+  service_user_map = { for k, v in local.service_users : k => v if v.is_active }
 
   functional_roles    = jsondecode(file("${path.module}/../resources/infrastructure/functional_roles.json"))["functional_roles"]
   functional_role_map = { for k, v in local.functional_roles : v.name => v if v.is_active }

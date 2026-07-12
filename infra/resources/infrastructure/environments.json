@@ -2,10 +2,7 @@
   "environments": {
     "dev": {
       "env": "DEV",
-      "developers": [
-        "AKASH_PAHILWAN",
-        "SOURABH_SHINDE"
-      ],
+      "developers": [],
       "is_active": true
     },
     "prod": {

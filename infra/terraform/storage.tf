@@ -26,17 +26,15 @@ resource "snowflake_storage_integration" "integration" {
 # Needed only by roles that CREATE stages against the integration ad hoc;
 # using a Terraform-created stage needs stage privileges only.
 
+# USAGE on the account-level integration for each configured functional role
+# (granted_to_service_roles now holds functional role names, e.g.
+# REVOPS_INGESTION_ADLS). Account-wide — the role spans both envs.
 resource "snowflake_grant_privileges_to_account_role" "storage_integration_usage" {
   for_each = merge([
-    for ik, integ in local.storage_integration_map : merge([
-      for env_key, env_mod in module.env : {
-        for base in integ.granted_to_service_roles :
-        "${ik}__${env_key}__${base}" => {
-          integration = integ.name
-          role        = env_mod.service_roles[base]
-        }
-      }
-    ]...)
+    for ik, integ in local.storage_integration_map : {
+      for role in integ.granted_to_service_roles :
+      "${ik}__${role}" => { integration = integ.name, role = role }
+    }
   ]...)
   account_role_name = each.value.role
   privileges        = ["USAGE"]
@@ -44,5 +42,5 @@ resource "snowflake_grant_privileges_to_account_role" "storage_integration_usage
     object_type = "INTEGRATION"
     object_name = each.value.integration
   }
-  depends_on = [snowflake_storage_integration.integration]
+  depends_on = [snowflake_storage_integration.integration, snowflake_account_role.functional]
 }

@@ -8,7 +8,7 @@
         "azure://snowopssa.blob.core.windows.net/og-telemetry/"
       ],
       "granted_to_service_roles": [
-        "INGEST"
+        "REVOPS_INGESTION_ADLS"
       ],
       "comment": "ADLS integration for OpenGov telemetry - og-telemetry container in snowopssa (env-prefixed paths)",
       "is_active": true

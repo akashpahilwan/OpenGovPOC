@@ -2,7 +2,7 @@
   "functional_roles": {
     "revops_analyst": {
       "name": "REVOPS_ANALYST",
-      "comment": "RevOps human role - read MARTS_REVOPS only (all envs)",
+      "comment": "Read MARTS only",
       "inherits_from": [],
       "granted_to": "",
       "warehouse": "ANALYTICS",
@@ -10,22 +10,38 @@
     },
     "revops_developer": {
       "name": "REVOPS_DEVELOPER",
-      "comment": "RevOps human role - analyst + read STAGING (all envs) + write DEV sandboxes",
+      "comment": "Read/write RAW + STAGING + MARTS (all envs); the role dbt jobs use to build models incl. PROD",
       "inherits_from": [
         "REVOPS_ANALYST"
       ],
       "granted_to": "",
-      "warehouse": "ANALYTICS",
+      "warehouse": "TRANSFORM",
       "is_active": true
     },
     "revops_admin": {
       "name": "REVOPS_ADMIN",
-      "comment": "RevOps human role - full domain access; only role that sees unmasked ARR",
+      "comment": "Full domain access; only role that sees unmasked ARR",
       "inherits_from": [
         "REVOPS_DEVELOPER"
       ],
       "granted_to": "SYSADMIN",
-      "warehouse": "ANALYTICS",
+      "warehouse": "TRANSFORM",
+      "is_active": true
+    },
+    "revops_ingestion_adls": {
+      "name": "REVOPS_INGESTION_ADLS",
+      "comment": "Write RAW telemetry (PRODUCT_EVENTS_RAW_ADLS) - Python/ADLS loader",
+      "inherits_from": [],
+      "granted_to": "SYSADMIN",
+      "warehouse": "INGEST",
+      "is_active": true
+    },
+    "revops_ingestion_fivetran": {
+      "name": "REVOPS_INGESTION_FIVETRAN",
+      "comment": "All privileges on tables+views in RAW Salesforce (SALESFORCE_RAW_FIVETRAN) - Fivetran connector",
+      "inherits_from": [],
+      "granted_to": "SYSADMIN",
+      "warehouse": "INGEST",
       "is_active": true
     }
   }

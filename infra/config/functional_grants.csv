@@ -1,4 +1,9 @@
 key,role,env,schema,level,is_active
 analyst_marts,REVOPS_ANALYST,ALL,MARTS_REVOPS,R,true
-developer_staging,REVOPS_DEVELOPER,ALL,STAGING,R,true
+developer_raw_fivetran,REVOPS_DEVELOPER,ALL,SALESFORCE_RAW_FIVETRAN,W,true
+developer_raw_adls,REVOPS_DEVELOPER,ALL,PRODUCT_EVENTS_RAW_ADLS,W,true
+developer_staging,REVOPS_DEVELOPER,ALL,STAGING,W,true
+developer_marts,REVOPS_DEVELOPER,ALL,MARTS_REVOPS,W,true
 admin_all_write,REVOPS_ADMIN,ALL,*,W,true
+ingestion_adls_raw,REVOPS_INGESTION_ADLS,ALL,PRODUCT_EVENTS_RAW_ADLS,W,true
+ingestion_fivetran_raw,REVOPS_INGESTION_FIVETRAN,ALL,SALESFORCE_RAW_FIVETRAN,W,true

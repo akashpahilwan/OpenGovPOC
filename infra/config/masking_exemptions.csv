@@ -1,4 +1,2 @@
 key,tag,role_type,role,is_active
 admin_sees_arr,PII_FINANCIAL,FUNCTIONAL,REVOPS_ADMIN,true
-dbt_hub_etl,PII_FINANCIAL,SERVICE,DBT_HUB,true
-dbt_revops_etl,PII_FINANCIAL,SERVICE,DBT_REVOPS,true

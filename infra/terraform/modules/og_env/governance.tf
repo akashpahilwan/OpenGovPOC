@@ -40,15 +40,15 @@ locals {
     ]))
   }
 
-  # Per-tag exempt roles (config/masking_exemptions.csv). FUNCTIONAL = literal
-  # account-wide role name; SERVICE = base name expanded to this env.
+  # Per-tag exempt roles (config/masking_exemptions.csv). Account-wide
+  # functional role names (e.g. REVOPS_ADMIN). Only REVOPS_ADMIN is exempt in
+  # the simplified model — everyone else, incl. the dbt REVOPS_DEVELOPER role,
+  # reads NULL, so ARR is never persisted into models (kept out of staging/marts).
   exempt_by_tag = {
-    for t in local.rule_tags : t => concat(
-      sort([for k, v in var.masking_exemptions : v.role
-      if v.is_active && v.tag == t && v.role_type == "FUNCTIONAL"]),
-      sort([for k, v in var.masking_exemptions : snowflake_account_role.service[v.role].name
-      if v.is_active && v.tag == t && v.role_type == "SERVICE"]),
-    )
+    for t in local.rule_tags : t => sort([
+      for k, v in var.masking_exemptions : v.role
+      if v.is_active && v.tag == t
+    ])
   }
 
 }

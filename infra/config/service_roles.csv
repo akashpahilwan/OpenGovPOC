@@ -1,5 +1,0 @@
-key,name,comment,read_schemas,write_schemas,warehouse,dbt_project,is_active
-fivetran,FIVETRAN,Fivetran connector identity - writes/alters SALESFORCE_RAW_FIVETRAN only,,SALESFORCE_RAW_FIVETRAN,INGEST,false,true
-ingest,INGEST,Python ADLS telemetry loader - DML on PRODUCT_EVENTS_RAW_ADLS only (platform owns the DDL),,PRODUCT_EVENTS_RAW_ADLS,INGEST,false,true
-dbt_hub,DBT_HUB,dbt HUB project (platform staging) - reads RAW; owns STAGING,SALESFORCE_RAW_FIVETRAN|PRODUCT_EVENTS_RAW_ADLS,STAGING,TRANSFORM,true,true
-dbt_revops,DBT_REVOPS,dbt RevOps SPOKE project - reads hub STAGING; owns MARTS_REVOPS,STAGING,MARTS_REVOPS,TRANSFORM,true,true

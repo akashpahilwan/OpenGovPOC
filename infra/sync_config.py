@@ -38,8 +38,9 @@ Column reference
                           only — Fivetran creates its own tables. Column
                           definitions live in resources/tables/<key>.json,
                           hand-authored, SnowOps style.)
-  service_roles.csv     : key | name | comment | read_schemas (pipe) | write_schemas (pipe)
-                          | warehouse (INGEST/TRANSFORM/ANALYTICS) | dbt_project | is_active
+  service_users.csv     : key | name | role (functional role it holds) |
+                          warehouse (function: INGEST/TRANSFORM/ANALYTICS, for
+                          the user's default wh) | comment | is_active
   functional_roles.csv  : key | name | comment | inherits_from (pipe)
                           | granted_to (parent role, e.g. SYSADMIN for tree top)
                           | warehouse | is_active
@@ -195,16 +196,18 @@ def parse_file_formats(rows):
     return result
 
 
-def parse_service_roles(rows):
+def parse_service_users(rows):
+    """Service users (TYPE=SERVICE, key-pair only). Each holds ONE functional
+    role — the account-wide role is what carries the privileges, so a service
+    user is just an identity + its role. Not env-suffixed: the role spans
+    envs (e.g. the dbt user builds DEV and PROD via REVOPS_DEVELOPER)."""
     result = {}
     for row in rows:
         result[row["key"].strip()] = {
             "name": row["name"].strip().upper(),
+            "role": row["role"].strip().upper(),
+            "warehouse": row["warehouse"].strip().upper(),  # function name for default wh
             "comment": row["comment"].strip(),
-            "read_schemas": _pipe(row.get("read_schemas", "")),
-            "write_schemas": _pipe(row.get("write_schemas", "")),
-            "warehouse": row["warehouse"].strip().upper(),
-            "dbt_project": _bool(row.get("dbt_project", "false")),
             "is_active": _bool(row["is_active"]),
         }
     return result
@@ -332,7 +335,7 @@ PARSERS = {
     "stages": ("stages.csv", "Stages", parse_stages),
     "file_formats": ("file_formats.csv", "FileFormats", parse_file_formats),
     "tables": ("tables.csv", "Tables", parse_tables),
-    "service_roles": ("service_roles.csv", "ServiceRoles", parse_service_roles),
+    "service_users": ("service_users.csv", "ServiceUsers", parse_service_users),
     "functional_roles": ("functional_roles.csv", "FunctionalRoles", parse_functional_roles),
     "functional_grants": ("functional_grants.csv", "FunctionalGrants", parse_functional_grants),
     "masking_rules": ("masking_rules.csv", "MaskingRules", parse_masking_rules),
@@ -395,25 +398,24 @@ def validate(manifests):
         if len(defaults) != 1:
             sys.exit(f"warehouses: function '{fn}' needs exactly one is_default=true row (found {len(defaults)})")
 
-    for k, sr in manifests["service_roles"].items():
-        if not sr["is_active"]:
+    # Service users hold ONE functional role; validate the role + warehouse fn.
+    for k, su in manifests["service_users"].items():
+        if not su["is_active"]:
             continue
-        if sr["warehouse"] not in wh_functions:
-            sys.exit(f"service_roles[{k}]: unknown warehouse function '{sr['warehouse']}'")
-        for s in sr["read_schemas"] + sr["write_schemas"]:
-            if s not in schema_names:
-                sys.exit(f"service_roles[{k}]: unknown schema '{s}'")
+        if su["role"] not in func_names:
+            sys.exit(f"service_users[{k}]: unknown functional role '{su['role']}'")
+        if su["warehouse"] not in wh_functions:
+            sys.exit(f"service_users[{k}]: unknown warehouse function '{su['warehouse']}'")
 
     # Storage layer: stages must reference known schemas/integrations; the
-    # integration's granted_to_service_roles must be service-role base names.
+    # integration's granted_to_roles must be known functional roles.
     integration_names = {v["name"] for v in manifests["storage_integrations"].values() if v["is_active"]}
-    service_role_names = {v["name"] for v in manifests["service_roles"].values() if v["is_active"]}
     for k, si in manifests["storage_integrations"].items():
         if not si["is_active"]:
             continue
         for r in si["granted_to_service_roles"]:
-            if r not in service_role_names:
-                sys.exit(f"storage_integrations[{k}]: unknown service role '{r}'")
+            if r not in func_names:
+                sys.exit(f"storage_integrations[{k}]: unknown role '{r}' (must be a functional role)")
     for k, st in manifests["stages"].items():
         if not st["is_active"]:
             continue

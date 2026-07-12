@@ -13,10 +13,11 @@ No object lists live in HCL. The human interface is `infra/config/*.csv`
 `infra/resources/infrastructure/`, which Terraform `for_each`es over:
 
 ```
-config/environments.csv       envs + warehouse sizing + developer sandboxes
+config/environments.csv       active environments (DEV / PROD)
+config/warehouses.csv         warehouses per function (XS default + L)
 config/schemas.csv            schemas + kind (DATA / GOVERNANCE / DBT)
-config/service_roles.csv      pipeline identities + schema R/W sets + dbt flag
-config/functional_roles.csv   human roles + hierarchy (inherits_from/granted_to)
+config/service_users.csv      service identities (TYPE=SERVICE) → role
+config/functional_roles.csv   the 5 roles + hierarchy (inherits_from/granted_to)
 config/functional_grants.csv  role × env × schema-pattern × R/W rules
 config/masking_rules.csv      masking VOCABULARY: tag x data_type x mask expr
 config/pii_columns.csv        column PII classifications (applied by apply_pii_tags.py)
@@ -39,12 +40,11 @@ so mistakes fail at sync time, not at `terraform apply` time.
 
 ```
 OG_<ENV>_DB
-├── SALESFORCE_RAW_FIVETRAN   raw — written ONLY by OG_FIVETRAN_<ENV> (owns its DDL)
-├── PRODUCT_EVENTS_RAW_ADLS   raw — DML ONLY by OG_INGEST_<ENV> (Python/ADLS);
+├── SALESFORCE_RAW_FIVETRAN   raw — all privileges to REVOPS_INGESTION_FIVETRAN (owns its DDL)
+├── PRODUCT_EVENTS_RAW_ADLS   raw — write to REVOPS_INGESTION_ADLS (Python/ADLS);
 │                             tables/stage/file format are deployer-owned contract objects
-├── STAGING                   dbt HUB project output (platform team)
-├── MARTS_REVOPS              dbt RevOps SPOKE project output
-├── REVOPS_DEV_<NAME>         personal dbt sandbox per developer, owner-only (DEV only)
+├── STAGING                   dbt staging models (built by REVOPS_DEVELOPER)
+├── MARTS_REVOPS              dbt RevOps marts (built by REVOPS_DEVELOPER)
 ├── GOVERNANCE                masking policy + PII_FINANCIAL tag (no data)
 └── DBT                       native "dbt Projects on Snowflake" objects
 
@@ -102,40 +102,42 @@ DESC STORAGE INTEGRATION OG_ADLS_INT;
 (usage + select, current & future) and `AR_<ENV>_<SCHEMA>_W` (all schema
 privileges + DML + future ownership, so writers can ALTER/DROP what they create).
 
-**Tier 2a — human functional roles** (account-wide, one set, per the brief):
+**Tier 2 — functional roles** (account-wide; the privileges live here, so a
+role spans both envs). Five roles, kept deliberately simple:
 
 | Role | Access |
 |---|---|
 | `REVOPS_ANALYST` | read `MARTS_REVOPS` (DEV + PROD) |
-| `REVOPS_DEVELOPER` | analyst + read `STAGING` (DEV + PROD); write only to their OWN personal DEV sandbox (granted direct to the user, not via this role) — PROD writes go through CI/CD, never humans |
-| `REVOPS_ADMIN` | full domain access; the only human role that sees unmasked ARR |
+| `REVOPS_DEVELOPER` | analyst + **read/write `RAW` + `STAGING` + `MARTS`** (DEV + PROD) — this is the role dbt jobs run as to build models, including in PROD |
+| `REVOPS_ADMIN` | full domain access; the only role that sees unmasked ARR |
+| `REVOPS_INGESTION_ADLS` | write `PRODUCT_EVENTS_RAW_ADLS` (Python/ADLS telemetry loader) |
+| `REVOPS_INGESTION_FIVETRAN` | all privileges on tables + views in `SALESFORCE_RAW_FIVETRAN` (Fivetran connector) |
 
-Hierarchy: `REVOPS_ANALYST → REVOPS_DEVELOPER → REVOPS_ADMIN → SYSADMIN`
-(each tier declares only its increment; inheritance supplies the rest).
+Hierarchy: `REVOPS_ANALYST → REVOPS_DEVELOPER → REVOPS_ADMIN → SYSADMIN`; the
+two ingestion roles hang off `SYSADMIN` directly (each tier declares only its
+increment; inheritance supplies the rest).
 
-**Tier 2b — service roles** (env-suffixed — a pipeline identity never spans envs):
+**Service users** (`config/service_users.csv`) — `TYPE = SERVICE`, key-pair
+JWT only (passwords impossible). Each holds exactly one functional role:
 
-| Role | Access | User |
+| User | Holds | Purpose |
 |---|---|---|
-| `OG_FIVETRAN_<ENV>` | W on `SALESFORCE_RAW_FIVETRAN` only | `OG_FIVETRAN_SVC_<ENV>` |
-| `OG_INGEST_<ENV>` | W on `PRODUCT_EVENTS_RAW_S3` only | `OG_INGEST_SVC_<ENV>` |
-| `OG_DBT_HUB_<ENV>` | R on both RAW, W on `STAGING` | `OG_DBT_HUB_SVC_<ENV>` |
-| `OG_DBT_REVOPS_<ENV>` | R on `STAGING`, W on `MARTS_REVOPS` | `OG_DBT_REVOPS_SVC_<ENV>` |
-
-The dbt Mesh boundary is enforced by RBAC: the RevOps spoke **cannot read
-RAW** — it can only build on the hub's published STAGING models. All service
-users are `TYPE = SERVICE` (key-pair JWT only; passwords are impossible).
+| `OG_DBT_SVC` | `REVOPS_DEVELOPER` | dbt model builds, DEV **and** PROD |
+| `OG_INGEST_ADLS_SVC` | `REVOPS_INGESTION_ADLS` | Python telemetry loader |
+| `OG_FIVETRAN_SVC` | `REVOPS_INGESTION_FIVETRAN` | Fivetran connector |
 
 ## ARR masking (tag-based)
 
-`GOVERNANCE.MASK_ARR_NUMBER` returns the real value only when
+`GOVERNANCE.MASK_PII_FINANCIAL_NUMBER` returns the real value only when
 `IS_ROLE_IN_SESSION('REVOPS_ADMIN')` (hierarchy-aware — survives role
-inheritance and secondary roles) or for the two dbt ETL roles (so dbt never
-*persists* masked NULLs into staging/marts); everyone else gets NULL.
-The policy is attached to the `GOVERNANCE.PII_FINANCIAL` **tag**, and the tag
-is set on `ACCOUNT.ARR` (seed SQL) and re-applied by dbt post-hooks on every
-downstream `arr` column — classifying a column IS protecting it, at every
-layer, in all 10 future domains, with zero per-table policy wiring.
+inheritance and secondary roles); **everyone else, including `REVOPS_DEVELOPER`
+and the dbt job, gets NULL** — exactly the brief. Because dbt is not exempt,
+`ARR` is deliberately **kept out of staging/marts models** so nothing ever
+persists a masked NULL; the real value lives only in RAW, visible only to
+`REVOPS_ADMIN`. The policy attaches to the `GOVERNANCE.PII_FINANCIAL` **tag**
+(config `masking_rules.csv`), and the tag is set on `ACCOUNT.ARR` by
+`apply_pii_tags.py` from `pii_columns.csv` — classifying a column IS protecting
+it, across all future domains, with zero per-table policy wiring.
 
 ## PII masking — fully config-driven & extensible
 
@@ -151,11 +153,11 @@ Three CSVs, three questions, zero HCL to add a rule:
   multiple policies on a tag only if their argument types differ) and any
   `mask_expression` that doesn't reference `VAL`.
 - **What is classified** — `config/pii_columns.csv` (schema/table/column → tag).
-- **Who sees it unmasked** — `config/masking_exemptions.csv`, per tag
-  (FUNCTIONAL = literal role, SERVICE = env-expanded). Current PII_FINANCIAL:
-  REVOPS_ADMIN + the two dbt ETL roles; everyone else reads the mask.
-  Users are never exempted directly — grant an exempt role via user_roles.csv,
-  so offboarding stays a single role revoke.
+- **Who sees it unmasked** — `config/masking_exemptions.csv`, per tag (a
+  functional role name). Current PII_FINANCIAL: **REVOPS_ADMIN only**; everyone
+  else (including REVOPS_DEVELOPER and the dbt job) reads the mask. Users are
+  never exempted directly — grant an exempt role via user_roles.csv, so
+  offboarding stays a single role revoke.
 
 **Applying it:** Terraform creates the tags + policies. `apply_pii_tags.py`
 does the two things this provider version can't express as resources —
@@ -195,20 +197,6 @@ snow sql -f infra/seed/seed_salesforce_mock.sql -D "env=DEV"
 snow sql -f infra/seed/seed_salesforce_mock.sql -D "env=PROD"
 ```
 
-## Developer sandboxes (dbt-recommended)
-
-Each developer gets a personal `REVOPS_DEV_<NAME>` schema — **DEV only,
-never PROD** — as their dbt profile's `schema` target, so parallel `dbt run`s
-never collide. Its write access role `AR_DEV_REVOPS_DEV_<NAME>_W` is granted
-**directly to that developer's user** — a deliberate, documented exception to
-users-hold-only-functional-roles, for private workspaces — so **no other
-developer can read or write it**. There is no shared dev schema; CI/integration
-dbt runs build into `MARTS_REVOPS`. The grant only fires for names that are
-real (active) `human_users`, so a listed name without a user just gets the
-schema, not a failing grant. Onboard a developer workspace: add the name to the
-`developers` column of the `dev` row in `config/environments.csv` (and to
-`human_users.csv`), sync, apply. Remove to tear it down.
-
 ## Onboard a new analyst
 
 1. Add one row to `config/human_users.csv` (creates the user; initial
@@ -221,25 +209,17 @@ schema, not a failing grant. Onboard a developer workspace: add the name to the
    Never grant `AR_*` access roles or object privileges directly to users —
    that is the invariant that makes offboarding total.
 
-## Onboard a new DEVELOPER (e.g. SOURABH_SHINDE) — three CSV edits
+## Onboard a new developer (e.g. SOURABH_SHINDE) — two CSV edits
 
 1. `config/human_users.csv` — creates the Snowflake user:
    `sourabh,SOURABH_SHINDE,sourabh.shinde@opengov.com,...,REVOPS_DEVELOPER,...,true`
-2. `config/environments.csv` — append to the DEV row's `developers` column:
-   `dev,DEV,AKASH_PAHILWAN|SOURABH_SHINDE,true`
-   → creates his personal dbt sandbox `OG_DEV_DB.REVOPS_DEV_SOURABH_SHINDE`
-   (+ its `AR_DEV_REVOPS_DEV_SOURABH_SHINDE_R/W` access roles). The `_W` role
-   is granted straight to user SOURABH_SHINDE — owner-only. DEV only; the PROD
-   row's developers column stays empty by design.
-3. `config/user_roles.csv` — one role does both envs:
+2. `config/user_roles.csv`:
    `sourabh_developer,SOURABH_SHINDE,REVOPS_DEVELOPER,true`
-   → developer in DEV (writes his OWN sandbox) **and** reader in PROD (STAGING +
-   MARTS read-only; no sandbox in PROD and no functional write grant there, so
-   zero write paths in PROD — PROD writes belong to CI/CD).
 
-After apply, verify:
-`SHOW GRANTS TO USER SOURABH_SHINDE;` and
-`SHOW SCHEMAS LIKE 'REVOPS_DEV%' IN DATABASE OG_DEV_DB;`
+`REVOPS_DEVELOPER` gives read/write on RAW + STAGING + MARTS in both envs. For
+personal dev work, developers point their dbt profile `schema` at a namespaced
+target (e.g. `STAGING_SOURABH`) within the schemas they already can write —
+no separate sandbox schema is provisioned. Verify: `SHOW GRANTS TO USER SOURABH_SHINDE;`
 
 ## Offboard someone — full revocation
 
@@ -271,11 +251,11 @@ ORDER BY ah.query_start_time DESC;
 ```
 
 Pair with `POLICY_REFERENCES` to prove the policy was attached at read time:
-`SELECT * FROM TABLE(og_prod_db.information_schema.policy_references(policy_name => 'OG_PROD_DB.GOVERNANCE.MASK_ARR_NUMBER'));`
+`SELECT * FROM TABLE(og_prod_db.information_schema.policy_references(policy_name => 'OG_PROD_DB.GOVERNANCE.MASK_PII_FINANCIAL_NUMBER'));`
 
-## How this scales to 10 domains
+## How this scales to N domains
 
-Everything above is domain-shaped: a new domain = one more spoke dbt project +
-`MARTS_<DOMAIN>` schema + three functional roles + env-suffixed service roles,
-all generated by the same module pattern. Masking scales through tags, not
-policies: classify the column, protection follows.
+Everything is domain-shaped: a new domain = a `MARTS_<DOMAIN>` schema + its
+functional roles + service users, all generated from the same CSV config and
+module. Masking scales through tags, not policies: classify the column,
+protection follows.

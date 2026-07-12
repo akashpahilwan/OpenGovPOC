@@ -10,14 +10,13 @@ module "env" {
   source   = "./modules/og_env"
   for_each = local.env_map
 
-  env           = each.value.env
-  developers    = each.value.developers
-  schemas       = local.schema_map
-  warehouses    = local.warehouse_map
-  service_roles = local.service_role_map
-  stages        = local.stage_map
-  file_formats  = local.file_format_map
-  tables        = local.table_map
+  env          = each.value.env
+  developers   = each.value.developers
+  schemas      = local.schema_map
+  warehouses   = local.warehouse_map
+  stages       = local.stage_map
+  file_formats = local.file_format_map
+  tables       = local.table_map
 
   masking_rules      = local.masking_rule_map
   masking_exemptions = local.masking_exemption_map
@@ -150,27 +149,38 @@ resource "snowflake_grant_account_role" "user_role" {
   depends_on = [snowflake_account_role.functional, snowflake_user.human]
 }
 
-# ── Personal dbt sandboxes — write access granted to the OWNER only ──────────
-# Deliberate exception to "users hold only functional roles": a personal
-# sandbox (OG_DEV_DB.REVOPS_DEV_<NAME>) is that developer's private workspace,
-# so its W access role is granted straight to their user — no other developer
-# can write it. The shared REVOPS_DEV schema stays writable by all developers
-# via REVOPS_DEVELOPER (functional_grants.csv). DEV only.
-# Guarded to developers who are actual (active) human users, so a name without
-# a user yet just gets the schema, not a failing grant.
+# ── Service users (config/service_users.csv) ─────────────────────────────────
+# TYPE=SERVICE, key-pair only. Each holds ONE functional role (account-wide),
+# so the role carries the privileges and spans both envs — e.g. OG_DBT_SVC
+# holds REVOPS_DEVELOPER and builds models in DEV and PROD. RSA public keys are
+# attached out-of-band via ALTER USER, so key rotation needs no terraform apply.
 
-locals {
-  dev_developers  = contains(keys(local.env_map), "DEV") ? local.env_map["DEV"].developers : []
-  human_usernames = toset([for k, v in local.human_user_map : v.username])
-  sandbox_owner_grants = {
-    for name in local.dev_developers : name => name
-    if contains(local.human_usernames, name)
-  }
+resource "snowflake_service_user" "svc" {
+  for_each = local.service_user_map
+  name     = each.value.name
+  comment  = each.value.comment
+  # default_role must be set by name; the role is granted below.
+  default_role = each.value.role
+  depends_on   = [snowflake_account_role.functional]
 }
 
-resource "snowflake_grant_account_role" "personal_sandbox_owner" {
-  for_each   = local.sandbox_owner_grants
-  role_name  = module.env["DEV"].access_roles_write["REVOPS_DEV_${each.key}"]
-  user_name  = each.key
-  depends_on = [snowflake_user.human]
+resource "snowflake_grant_account_role" "svc_user_role" {
+  for_each   = local.service_user_map
+  role_name  = each.value.role
+  user_name  = snowflake_service_user.svc[each.key].name
+  depends_on = [snowflake_account_role.functional]
+}
+
+# ── dbt Projects on Snowflake — REVOPS_DEVELOPER runs them (DEV + PROD) ──────
+# The role that builds models needs CREATE DBT PROJECT + USAGE on each env's
+# DBT schema. (Native "dbt Projects on Snowflake" objects live in OG_<ENV>_DB.DBT.)
+
+resource "snowflake_grant_privileges_to_account_role" "developer_dbt_project" {
+  for_each          = module.env
+  account_role_name = "REVOPS_DEVELOPER"
+  privileges        = ["USAGE", "CREATE DBT PROJECT"]
+  on_schema {
+    schema_name = "\"${each.value.database}\".\"DBT\""
+  }
+  depends_on = [snowflake_account_role.functional]
 }

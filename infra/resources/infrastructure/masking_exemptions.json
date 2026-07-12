@@ -5,18 +5,6 @@
       "role_type": "FUNCTIONAL",
       "role": "REVOPS_ADMIN",
       "is_active": true
-    },
-    "dbt_hub_etl": {
-      "tag": "PII_FINANCIAL",
-      "role_type": "SERVICE",
-      "role": "DBT_HUB",
-      "is_active": true
-    },
-    "dbt_revops_etl": {
-      "tag": "PII_FINANCIAL",
-      "role_type": "SERVICE",
-      "role": "DBT_REVOPS",
-      "is_active": true
     }
   }
 }
