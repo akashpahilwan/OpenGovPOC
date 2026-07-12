@@ -182,11 +182,16 @@ resource "snowflake_grant_account_role" "svc_user_role" {
 # REVOPS_DEVELOPER). Guarded to active human_users.
 
 locals {
-  dev_developers  = contains(keys(local.env_map), "DEV") ? local.env_map["DEV"].developers : []
-  human_usernames = toset([for k, v in local.human_user_map : v.username])
+  dev_developers = contains(keys(local.env_map), "DEV") ? local.env_map["DEV"].developers : []
+  # Real users we can grant a sandbox to: TF-created human_users OR pre-existing
+  # users we assign roles to (user_roles) — e.g. the account owner AKASHPAHILWAN.
+  known_users = toset(concat(
+    [for k, v in local.human_user_map : v.username],
+    [for k, v in local.user_role_map : v.username],
+  ))
   sandbox_owner_grants = {
     for name in local.dev_developers : name => name
-    if contains(local.human_usernames, name)
+    if contains(local.known_users, name)
   }
 }
 

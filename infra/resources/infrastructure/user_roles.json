@@ -19,6 +19,11 @@
       "username": "SOURABH_SHINDE",
       "role_name": "REVOPS_READER",
       "is_active": true
+    },
+    "akash_reader": {
+      "username": "AKASHPAHILWAN",
+      "role_name": "REVOPS_READER",
+      "is_active": true
     }
   }
 }
