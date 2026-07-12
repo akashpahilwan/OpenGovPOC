@@ -1,0 +1,2 @@
+key,name,schema,stage_type,url,storage_integration,comment,is_active
+page_views_ext,PAGE_VIEWS_STAGE,PRODUCT_EVENTS_RAW_ADLS,EXTERNAL,azure://snowopssa.blob.core.windows.net/og-telemetry/{env}/product_events/page_views/,OG_ADLS_INT,External stage over the env-prefixed page_views path - COPY INTO reads from here,true

@@ -1,0 +1,17 @@
+{
+  "environments": {
+    "dev": {
+      "env": "DEV",
+      "developers": [
+        "AKASH_PAHILWAN",
+        "SOURABH_SHINDE"
+      ],
+      "is_active": true
+    },
+    "prod": {
+      "env": "PROD",
+      "developers": [],
+      "is_active": true
+    }
+  }
+}

@@ -1,0 +1,2 @@
+key,name,provider,azure_tenant_id,allowed_locations,granted_to_service_roles,comment,is_active
+og_adls_int,OG_ADLS_INT,AZURE,bc42df1c-d40a-43c8-aebb-29fa238f332c,azure://snowopssa.blob.core.windows.net/og-telemetry/,INGEST,ADLS integration for OpenGov telemetry - og-telemetry container in snowopssa (env-prefixed paths),true

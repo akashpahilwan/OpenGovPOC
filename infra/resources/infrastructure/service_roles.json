@@ -1,0 +1,54 @@
+{
+  "service_roles": {
+    "fivetran": {
+      "name": "FIVETRAN",
+      "comment": "Fivetran connector identity - writes/alters SALESFORCE_RAW_FIVETRAN only",
+      "read_schemas": [],
+      "write_schemas": [
+        "SALESFORCE_RAW_FIVETRAN"
+      ],
+      "warehouse": "INGEST",
+      "dbt_project": false,
+      "is_active": true
+    },
+    "ingest": {
+      "name": "INGEST",
+      "comment": "Python ADLS telemetry loader - DML on PRODUCT_EVENTS_RAW_ADLS only (platform owns the DDL)",
+      "read_schemas": [],
+      "write_schemas": [
+        "PRODUCT_EVENTS_RAW_ADLS"
+      ],
+      "warehouse": "INGEST",
+      "dbt_project": false,
+      "is_active": true
+    },
+    "dbt_hub": {
+      "name": "DBT_HUB",
+      "comment": "dbt HUB project (platform staging) - reads RAW; owns STAGING",
+      "read_schemas": [
+        "SALESFORCE_RAW_FIVETRAN",
+        "PRODUCT_EVENTS_RAW_ADLS"
+      ],
+      "write_schemas": [
+        "STAGING"
+      ],
+      "warehouse": "TRANSFORM",
+      "dbt_project": true,
+      "is_active": true
+    },
+    "dbt_revops": {
+      "name": "DBT_REVOPS",
+      "comment": "dbt RevOps SPOKE project - reads hub STAGING; owns MARTS_REVOPS + REVOPS_DEV",
+      "read_schemas": [
+        "STAGING"
+      ],
+      "write_schemas": [
+        "MARTS_REVOPS",
+        "REVOPS_DEV"
+      ],
+      "warehouse": "TRANSFORM",
+      "dbt_project": true,
+      "is_active": true
+    }
+  }
+}

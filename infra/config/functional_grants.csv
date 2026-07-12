@@ -1,0 +1,5 @@
+key,role,env,schema,level,is_active
+analyst_marts,REVOPS_ANALYST,ALL,MARTS_REVOPS,R,true
+developer_staging,REVOPS_DEVELOPER,ALL,STAGING,R,true
+developer_sandboxes,REVOPS_DEVELOPER,DEV,REVOPS_DEV*,W,true
+admin_all_write,REVOPS_ADMIN,ALL,*,W,true

@@ -1,0 +1,98 @@
+# ── og_env module inputs ─────────────────────────────────────────────────────
+# One instance of this module = one fully-provisioned environment:
+# OG_<ENV>_DB + schemas + warehouses + access roles + service roles/users
+# + governance objects (masking policy, PII tag).
+
+variable "env" {
+  type        = string
+  description = "Environment name — DEV / QA / PROD. Drives every object name."
+  validation {
+    condition     = contains(["DEV", "QA", "PROD"], var.env)
+    error_message = "env must be one of DEV, QA, PROD."
+  }
+}
+
+variable "warehouses" {
+  type = map(object({
+    function     = string # INGEST | TRANSFORM | ANALYTICS — what roles bind to
+    size         = string
+    auto_suspend = number
+    is_default   = bool # exactly one per function; becomes service users' default warehouse
+    comment      = string
+    is_active    = bool
+  }))
+  description = <<-EOT
+    Warehouses for this env, keyed by short name (ingest_xs, ingest_l, ...) —
+    from config/warehouses.csv. Each becomes OG_<ENV>_<KEY>_WH. Two sizes per
+    pipeline function: roles get USAGE on every warehouse of their function;
+    jobs run on the default (XSMALL) and opt into LARGE explicitly for
+    backfills / full refreshes via USE WAREHOUSE.
+  EOT
+}
+
+variable "developers" {
+  type        = list(string)
+  default     = []
+  description = <<-EOT
+    Developer names that get an individual dbt sandbox schema
+    (REVOPS_DEV_<NAME>) — the dbt-recommended one-schema-per-developer dev
+    pattern, so parallel `dbt run`s never collide. Namespace isolation only:
+    every sandbox is granted to the shared REVOPS_DEVELOPER role; each
+    developer's dbt profile targets their own schema. Comes from the
+    `developers` column of config/environments.csv (normally DEV only).
+  EOT
+}
+
+variable "schemas" {
+  type = map(object({
+    kind               = string # DATA (gets R/W access roles) | GOVERNANCE | DBT
+    writer_owns_future = bool   # true: W role owns what it creates (Fivetran/dbt); false: platform owns DDL, W role gets DML only (ADLS landing)
+    comment            = string
+    is_active          = bool
+  }))
+  description = "Schemas for this env DB, keyed by schema name — from config/schemas.csv."
+}
+
+variable "stages" {
+  type = map(object({
+    name                = string
+    schema              = string
+    stage_type          = string # EXTERNAL | INTERNAL
+    url                 = string # {env} placeholder -> lowercase env prefix
+    storage_integration = string
+    comment             = string
+    is_active           = bool
+  }))
+  default     = {}
+  description = "Stages to create in this env — from config/stages.csv."
+}
+
+variable "file_formats" {
+  type = map(object({
+    name        = string
+    schema      = string
+    format_type = string
+    comment     = string
+    is_active   = bool
+  }))
+  default     = {}
+  description = "File formats to create in this env — from config/file_formats.csv."
+}
+
+variable "service_roles" {
+  type = map(object({
+    comment       = string
+    read_schemas  = list(string)
+    write_schemas = list(string)
+    warehouse     = string # INGEST | TRANSFORM | ANALYTICS
+    dbt_project   = bool   # true => CREATE DBT PROJECT + governance tag rights + masking exemption
+    is_active     = bool
+  }))
+  description = <<-EOT
+    Service roles for this env, keyed by base name (FIVETRAN, INGEST, DBT_HUB,
+    DBT_REVOPS, ...) — from config/service_roles.csv. Each becomes role
+    OG_<NAME>_<ENV> + user OG_<NAME>_SVC_<ENV>. dbt_project roles are exempt
+    from the ARR masking policy (they must not persist masked NULLs) and can
+    create native DBT PROJECT objects.
+  EOT
+}

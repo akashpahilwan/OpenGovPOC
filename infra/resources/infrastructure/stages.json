@@ -1,0 +1,13 @@
+{
+  "stages": {
+    "page_views_ext": {
+      "name": "PAGE_VIEWS_STAGE",
+      "schema": "PRODUCT_EVENTS_RAW_ADLS",
+      "stage_type": "EXTERNAL",
+      "url": "azure://snowopssa.blob.core.windows.net/og-telemetry/{env}/product_events/page_views/",
+      "storage_integration": "OG_ADLS_INT",
+      "comment": "External stage over the env-prefixed page_views path - COPY INTO reads from here",
+      "is_active": true
+    }
+  }
+}

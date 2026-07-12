@@ -1,0 +1,11 @@
+{
+  "file_formats": {
+    "ff_json": {
+      "name": "FF_JSON",
+      "schema": "PRODUCT_EVENTS_RAW_ADLS",
+      "format_type": "JSON",
+      "comment": "JSON events - strip_outer_array so an array file becomes one row per event",
+      "is_active": true
+    }
+  }
+}

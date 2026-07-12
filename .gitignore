@@ -1,0 +1,30 @@
+# ── Terraform ─────────────────────────────────────────────────────────────
+# Local state (POC decision: local backend) — never commit state, it can
+# contain sensitive values. The lock file IS committed.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars          # may carry secrets; config lives in CSVs, not tfvars
+crash.log
+
+# ── Keys & secrets ────────────────────────────────────────────────────────
+*.p8
+*.pem
+*.key
+og_deployer_rsa_key*
+
+# ── Python ────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# ── dbt (Tasks 3+) ────────────────────────────────────────────────────────
+**/dbt_packages/
+**/target/
+**/logs/
+
+# ── OS / editor noise ─────────────────────────────────────────────────────
+Thumbs.db
+.DS_Store
+~$*.pptx

@@ -1,0 +1,2 @@
+key,name,schema,format_type,comment,is_active
+ff_json,FF_JSON,PRODUCT_EVENTS_RAW_ADLS,JSON,JSON events - strip_outer_array so an array file becomes one row per event,true

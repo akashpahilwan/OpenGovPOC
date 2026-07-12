@@ -1,0 +1,32 @@
+{
+  "functional_roles": {
+    "revops_analyst": {
+      "name": "REVOPS_ANALYST",
+      "comment": "RevOps human role - read MARTS_REVOPS only (all envs)",
+      "inherits_from": [],
+      "granted_to": "",
+      "warehouse": "ANALYTICS",
+      "is_active": true
+    },
+    "revops_developer": {
+      "name": "REVOPS_DEVELOPER",
+      "comment": "RevOps human role - analyst + read STAGING (all envs) + write DEV sandboxes",
+      "inherits_from": [
+        "REVOPS_ANALYST"
+      ],
+      "granted_to": "",
+      "warehouse": "ANALYTICS",
+      "is_active": true
+    },
+    "revops_admin": {
+      "name": "REVOPS_ADMIN",
+      "comment": "RevOps human role - full domain access; only role that sees unmasked ARR",
+      "inherits_from": [
+        "REVOPS_DEVELOPER"
+      ],
+      "granted_to": "SYSADMIN",
+      "warehouse": "ANALYTICS",
+      "is_active": true
+    }
+  }
+}

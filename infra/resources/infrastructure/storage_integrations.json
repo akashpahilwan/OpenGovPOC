@@ -1,0 +1,17 @@
+{
+  "storage_integrations": {
+    "og_adls_int": {
+      "name": "OG_ADLS_INT",
+      "provider": "AZURE",
+      "azure_tenant_id": "bc42df1c-d40a-43c8-aebb-29fa238f332c",
+      "allowed_locations": [
+        "azure://snowopssa.blob.core.windows.net/og-telemetry/"
+      ],
+      "granted_to_service_roles": [
+        "INGEST"
+      ],
+      "comment": "ADLS integration for OpenGov telemetry - og-telemetry container in snowopssa (env-prefixed paths)",
+      "is_active": true
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "schemas": {
+    "salesforce_raw_fivetran": {
+      "schema": "SALESFORCE_RAW_FIVETRAN",
+      "kind": "DATA",
+      "writer_owns_future": true,
+      "comment": "RAW landing - Salesforce via Fivetran (Fivetran owns its DDL)",
+      "is_active": true
+    },
+    "product_events_raw_adls": {
+      "schema": "PRODUCT_EVENTS_RAW_ADLS",
+      "kind": "DATA",
+      "writer_owns_future": false,
+      "comment": "RAW landing - product telemetry JSON from ADLS via Python; tables/stages/file formats are deployer-owned contract objects; loader gets DML only",
+      "is_active": true
+    },
+    "staging": {
+      "schema": "STAGING",
+      "kind": "DATA",
+      "writer_owns_future": true,
+      "comment": "dbt HUB project output - typed/cleaned models (stg_*)",
+      "is_active": true
+    },
+    "marts_revops": {
+      "schema": "MARTS_REVOPS",
+      "kind": "DATA",
+      "writer_owns_future": true,
+      "comment": "dbt RevOps SPOKE project output - business marts (mart_revops__*)",
+      "is_active": true
+    },
+    "revops_dev": {
+      "schema": "REVOPS_DEV",
+      "kind": "DATA",
+      "writer_owns_future": true,
+      "comment": "RevOps shared dev target - CI/integration runs",
+      "is_active": true
+    },
+    "governance": {
+      "schema": "GOVERNANCE",
+      "kind": "GOVERNANCE",
+      "writer_owns_future": false,
+      "comment": "Masking policies + classification tags - no data",
+      "is_active": true
+    },
+    "dbt": {
+      "schema": "DBT",
+      "kind": "DBT",
+      "writer_owns_future": false,
+      "comment": "dbt Projects on Snowflake - native DBT PROJECT objects live here",
+      "is_active": true
+    }
+  }
+}

@@ -1,0 +1,4 @@
+key,name,comment,inherits_from,granted_to,warehouse,is_active
+revops_analyst,REVOPS_ANALYST,RevOps human role - read MARTS_REVOPS only (all envs),,,ANALYTICS,true
+revops_developer,REVOPS_DEVELOPER,RevOps human role - analyst + read STAGING (all envs) + write DEV sandboxes,REVOPS_ANALYST,,ANALYTICS,true
+revops_admin,REVOPS_ADMIN,RevOps human role - full domain access; only role that sees unmasked ARR,REVOPS_DEVELOPER,SYSADMIN,ANALYTICS,true

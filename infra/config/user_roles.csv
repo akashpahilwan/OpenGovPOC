@@ -1,0 +1,5 @@
+key,username,role_name,is_active
+demo_admin,AKASH_PAHILWAN,REVOPS_ADMIN,false
+demo_developer,AKASH_PAHILWAN,REVOPS_DEVELOPER,false
+demo_analyst,AKASH_PAHILWAN,REVOPS_ANALYST,false
+sourabh_developer,SOURABH_SHINDE,REVOPS_DEVELOPER,true

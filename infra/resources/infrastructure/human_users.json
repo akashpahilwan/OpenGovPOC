@@ -1,0 +1,12 @@
+{
+  "human_users": {
+    "sourabh": {
+      "username": "SOURABH_SHINDE",
+      "login_name": "sourabh.shinde@opengov.com",
+      "email": "sourabh.shinde@opengov.com",
+      "default_role": "REVOPS_DEVELOPER",
+      "comment": "RevOps developer - onboarded 2026-07-12",
+      "is_active": true
+    }
+  }
+}

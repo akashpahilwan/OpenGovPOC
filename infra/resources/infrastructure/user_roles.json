@@ -1,0 +1,24 @@
+{
+  "user_roles": {
+    "demo_admin": {
+      "username": "AKASH_PAHILWAN",
+      "role_name": "REVOPS_ADMIN",
+      "is_active": false
+    },
+    "demo_developer": {
+      "username": "AKASH_PAHILWAN",
+      "role_name": "REVOPS_DEVELOPER",
+      "is_active": false
+    },
+    "demo_analyst": {
+      "username": "AKASH_PAHILWAN",
+      "role_name": "REVOPS_ANALYST",
+      "is_active": false
+    },
+    "sourabh_developer": {
+      "username": "SOURABH_SHINDE",
+      "role_name": "REVOPS_DEVELOPER",
+      "is_active": true
+    }
+  }
+}

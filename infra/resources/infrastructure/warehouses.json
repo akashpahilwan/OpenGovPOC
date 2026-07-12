@@ -1,0 +1,44 @@
+{
+  "warehouses": {
+    "ingest_xs": {
+      "function": "INGEST",
+      "size": "XSMALL",
+      "auto_suspend": 60,
+      "is_default": true,
+      "comment": "routine hourly loads - Fivetran + Python S3 ingestion",
+      "is_active": true
+    },
+    "ingest_l": {
+      "function": "INGEST",
+      "size": "LARGE",
+      "auto_suspend": 60,
+      "is_default": false,
+      "comment": "backfills / full refresh loads - opt in via USE WAREHOUSE",
+      "is_active": true
+    },
+    "transform_xs": {
+      "function": "TRANSFORM",
+      "size": "XSMALL",
+      "auto_suspend": 60,
+      "is_default": true,
+      "comment": "routine dbt hub + spoke runs",
+      "is_active": true
+    },
+    "transform_l": {
+      "function": "TRANSFORM",
+      "size": "LARGE",
+      "auto_suspend": 60,
+      "is_default": false,
+      "comment": "dbt full-refresh / large builds - opt in via USE WAREHOUSE",
+      "is_active": true
+    },
+    "analytics_xs": {
+      "function": "ANALYTICS",
+      "size": "XSMALL",
+      "auto_suspend": 60,
+      "is_default": true,
+      "comment": "human queries - analysts and developers",
+      "is_active": true
+    }
+  }
+}
