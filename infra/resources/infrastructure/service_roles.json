@@ -38,13 +38,12 @@
     },
     "dbt_revops": {
       "name": "DBT_REVOPS",
-      "comment": "dbt RevOps SPOKE project - reads hub STAGING; owns MARTS_REVOPS + REVOPS_DEV",
+      "comment": "dbt RevOps SPOKE project - reads hub STAGING; owns MARTS_REVOPS",
       "read_schemas": [
         "STAGING"
       ],
       "write_schemas": [
-        "MARTS_REVOPS",
-        "REVOPS_DEV"
+        "MARTS_REVOPS"
       ],
       "warehouse": "TRANSFORM",
       "dbt_project": true,

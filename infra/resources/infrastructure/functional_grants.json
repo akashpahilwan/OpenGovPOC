@@ -14,13 +14,6 @@
       "level": "R",
       "is_active": true
     },
-    "developer_sandboxes": {
-      "role": "REVOPS_DEVELOPER",
-      "env": "DEV",
-      "schema": "REVOPS_DEV*",
-      "level": "W",
-      "is_active": true
-    },
     "admin_all_write": {
       "role": "REVOPS_ADMIN",
       "env": "ALL",

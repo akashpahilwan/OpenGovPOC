@@ -28,13 +28,6 @@
       "comment": "dbt RevOps SPOKE project output - business marts (mart_revops__*)",
       "is_active": true
     },
-    "revops_dev": {
-      "schema": "REVOPS_DEV",
-      "kind": "DATA",
-      "writer_owns_future": true,
-      "comment": "RevOps shared dev target - CI/integration runs",
-      "is_active": true
-    },
     "governance": {
       "schema": "GOVERNANCE",
       "kind": "GOVERNANCE",

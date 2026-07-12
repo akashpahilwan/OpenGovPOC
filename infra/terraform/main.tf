@@ -149,3 +149,28 @@ resource "snowflake_grant_account_role" "user_role" {
   user_name  = each.value.username
   depends_on = [snowflake_account_role.functional, snowflake_user.human]
 }
+
+# ── Personal dbt sandboxes — write access granted to the OWNER only ──────────
+# Deliberate exception to "users hold only functional roles": a personal
+# sandbox (OG_DEV_DB.REVOPS_DEV_<NAME>) is that developer's private workspace,
+# so its W access role is granted straight to their user — no other developer
+# can write it. The shared REVOPS_DEV schema stays writable by all developers
+# via REVOPS_DEVELOPER (functional_grants.csv). DEV only.
+# Guarded to developers who are actual (active) human users, so a name without
+# a user yet just gets the schema, not a failing grant.
+
+locals {
+  dev_developers  = contains(keys(local.env_map), "DEV") ? local.env_map["DEV"].developers : []
+  human_usernames = toset([for k, v in local.human_user_map : v.username])
+  sandbox_owner_grants = {
+    for name in local.dev_developers : name => name
+    if contains(local.human_usernames, name)
+  }
+}
+
+resource "snowflake_grant_account_role" "personal_sandbox_owner" {
+  for_each   = local.sandbox_owner_grants
+  role_name  = module.env["DEV"].access_roles_write["REVOPS_DEV_${each.key}"]
+  user_name  = each.key
+  depends_on = [snowflake_user.human]
+}

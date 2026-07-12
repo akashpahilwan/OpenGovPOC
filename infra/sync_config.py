@@ -256,7 +256,9 @@ def parse_masking_rules(rows):
         base_type = data_type.split("(")[0]  # NUMBER(18,2) -> NUMBER
         result[row["key"].strip()] = {
             "tag": tag,
-            "allowed_values": _pipe(row.get("allowed_values", "")),
+            # tag VALUES are case-sensitive data, not identifiers — do NOT
+            # uppercase (must match pii_columns.tag_value exactly).
+            "allowed_values": [x.strip() for x in str(row.get("allowed_values", "")).split("|") if x.strip()],
             "data_type": data_type,
             "mask_expression": row["mask_expression"].strip(),  # ELSE branch, references VAL
             # Policy name is derived once here so Terraform (creates it) and

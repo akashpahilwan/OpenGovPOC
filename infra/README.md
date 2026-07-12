@@ -44,8 +44,7 @@ OG_<ENV>_DB
 │                             tables/stage/file format are deployer-owned contract objects
 ├── STAGING                   dbt HUB project output (platform team)
 ├── MARTS_REVOPS              dbt RevOps SPOKE project output
-├── REVOPS_DEV                shared dev target (CI/integration runs, DEV only)
-├── REVOPS_DEV_<NAME>         personal dbt sandbox per developer (DEV only)
+├── REVOPS_DEV_<NAME>         personal dbt sandbox per developer, owner-only (DEV only)
 ├── GOVERNANCE                masking policy + PII_FINANCIAL tag (no data)
 └── DBT                       native "dbt Projects on Snowflake" objects
 
@@ -108,7 +107,7 @@ privileges + DML + future ownership, so writers can ALTER/DROP what they create)
 | Role | Access |
 |---|---|
 | `REVOPS_ANALYST` | read `MARTS_REVOPS` (DEV + PROD) |
-| `REVOPS_DEVELOPER` | analyst + read `STAGING` (DEV + PROD) + write `REVOPS_DEV` (DEV only — PROD writes go through CI/CD, never humans) |
+| `REVOPS_DEVELOPER` | analyst + read `STAGING` (DEV + PROD); write only to their OWN personal DEV sandbox (granted direct to the user, not via this role) — PROD writes go through CI/CD, never humans |
 | `REVOPS_ADMIN` | full domain access; the only human role that sees unmasked ARR |
 
 Hierarchy: `REVOPS_ANALYST → REVOPS_DEVELOPER → REVOPS_ADMIN → SYSADMIN`
@@ -121,7 +120,7 @@ Hierarchy: `REVOPS_ANALYST → REVOPS_DEVELOPER → REVOPS_ADMIN → SYSADMIN`
 | `OG_FIVETRAN_<ENV>` | W on `SALESFORCE_RAW_FIVETRAN` only | `OG_FIVETRAN_SVC_<ENV>` |
 | `OG_INGEST_<ENV>` | W on `PRODUCT_EVENTS_RAW_S3` only | `OG_INGEST_SVC_<ENV>` |
 | `OG_DBT_HUB_<ENV>` | R on both RAW, W on `STAGING` | `OG_DBT_HUB_SVC_<ENV>` |
-| `OG_DBT_REVOPS_<ENV>` | R on `STAGING`, W on `MARTS_REVOPS` + `REVOPS_DEV` | `OG_DBT_REVOPS_SVC_<ENV>` |
+| `OG_DBT_REVOPS_<ENV>` | R on `STAGING`, W on `MARTS_REVOPS` | `OG_DBT_REVOPS_SVC_<ENV>` |
 
 The dbt Mesh boundary is enforced by RBAC: the RevOps spoke **cannot read
 RAW** — it can only build on the hub's published STAGING models. All service
@@ -200,11 +199,15 @@ snow sql -f infra/seed/seed_salesforce_mock.sql -D "env=PROD"
 
 Each developer gets a personal `REVOPS_DEV_<NAME>` schema — **DEV only,
 never PROD** — as their dbt profile's `schema` target, so parallel `dbt run`s
-never collide. This is namespace isolation, not security isolation: every
-sandbox is granted to the shared `REVOPS_DEVELOPER` role, preserving the
-users-hold-only-functional-roles invariant. Onboard a developer workspace:
-add the name to the `developers` column of the `dev` row in
-`config/environments.csv`, sync, apply. Remove the name to tear it down.
+never collide. Its write access role `AR_DEV_REVOPS_DEV_<NAME>_W` is granted
+**directly to that developer's user** — a deliberate, documented exception to
+users-hold-only-functional-roles, for private workspaces — so **no other
+developer can read or write it**. There is no shared dev schema; CI/integration
+dbt runs build into `MARTS_REVOPS`. The grant only fires for names that are
+real (active) `human_users`, so a listed name without a user just gets the
+schema, not a failing grant. Onboard a developer workspace: add the name to the
+`developers` column of the `dev` row in `config/environments.csv` (and to
+`human_users.csv`), sync, apply. Remove to tear it down.
 
 ## Onboard a new analyst
 
@@ -225,13 +228,13 @@ add the name to the `developers` column of the `dev` row in
 2. `config/environments.csv` — append to the DEV row's `developers` column:
    `dev,DEV,AKASH_PAHILWAN|SOURABH_SHINDE,true`
    → creates his personal dbt sandbox `OG_DEV_DB.REVOPS_DEV_SOURABH_SHINDE`
-   (+ its `AR_DEV_REVOPS_DEV_SOURABH_SHINDE_R/W` access roles, auto-wired to
-   `REVOPS_DEVELOPER` by the `REVOPS_DEV*` grant rule). DEV only — the PROD
+   (+ its `AR_DEV_REVOPS_DEV_SOURABH_SHINDE_R/W` access roles). The `_W` role
+   is granted straight to user SOURABH_SHINDE — owner-only. DEV only; the PROD
    row's developers column stays empty by design.
 3. `config/user_roles.csv` — one role does both envs:
    `sourabh_developer,SOURABH_SHINDE,REVOPS_DEVELOPER,true`
-   → developer in DEV (writes his sandbox) **and** reader in PROD (STAGING +
-   MARTS read-only; the sandbox-write grant is scoped `env=DEV`, so he has
+   → developer in DEV (writes his OWN sandbox) **and** reader in PROD (STAGING +
+   MARTS read-only; no sandbox in PROD and no functional write grant there, so
    zero write paths in PROD — PROD writes belong to CI/CD).
 
 After apply, verify:

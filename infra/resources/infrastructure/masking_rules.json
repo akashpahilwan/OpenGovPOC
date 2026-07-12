@@ -3,7 +3,7 @@
     "pii_financial_number": {
       "tag": "PII_FINANCIAL",
       "allowed_values": [
-        "ARR"
+        "arr"
       ],
       "data_type": "NUMBER(18,2)",
       "mask_expression": "NULL",
@@ -14,7 +14,7 @@
     "pii_contact_email": {
       "tag": "PII_CONTACT",
       "allowed_values": [
-        "EMAIL"
+        "email"
       ],
       "data_type": "VARCHAR",
       "mask_expression": "REGEXP_REPLACE(VAL, '^[^@]+', '****')",
@@ -25,7 +25,7 @@
     "pii_phone_number": {
       "tag": "PII_PHONE",
       "allowed_values": [
-        "PHONE"
+        "phone"
       ],
       "data_type": "VARCHAR",
       "mask_expression": "'***-***-' || RIGHT(VAL, 4)",
