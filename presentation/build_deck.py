@@ -345,7 +345,7 @@ for ci in range(ncols):
 for ri, row in enumerate(rows):
     for ci, val in enumerate(row):
         cell = tbl.cell(ri, ci)
-        cell.text = val
+        cell.text = _dash(val)   # table cells bypass tidy(); strip em-dashes here too
         cell.vertical_anchor = MSO_ANCHOR.MIDDLE
         cell.margin_left = Inches(0.12); cell.margin_right = Inches(0.08)
         para = cell.text_frame.paragraphs[0]
@@ -465,7 +465,7 @@ bullets(s, [
     (0, "dbt Mesh:", "each domain exposes PUBLIC models via contracts; consumers depend on stable interfaces, not internals."),
     (0, "Quality is code:", "generic + singular tests, model contracts, source freshness, exposures for BI/AI lineage."),
     (0, "Incremental vs full-refresh:", "incremental for high-volume events (telemetry); full-refresh for small dimensions."),
-    (0, "Fast CI:", "slim CI builds only state:modified+ — seconds, not full rebuilds."),
+    (0, "Fast CI(Ideal):", "slim CI builds only state:modified+ — seconds, not full rebuilds."),
 ], 0.7, 1.55, 12.0, 4.5, base=18)
 takeaway(s, "Contracts + dbt Mesh let domains move independently while consumers stay safe.")
 footer(s, 8)
@@ -553,7 +553,7 @@ bullets(s, [
     (0, "Load observability — PAGE_VIEWS_LOAD_LOG:", "one row per ingestion run (file, records loaded, quarantined, timestamp) — an audit trail that outlives COPY's 64-day history."),
     (0, "Quarantine as a signal:", "bad rows land in PAGE_VIEWS_QUARANTINE, countable per run (PROD: 9 loaded / 5 quarantined) — a reject-rate you can alert on."),
     (0, "Quality as code, gated in CI:", "dbt not_null / unique / accepted_values / relationships run on every preprod & prod build — a red test blocks the deploy."),
-    (0, "Native audit surfaces:", "COPY_HISTORY (14d) for loads, ACCESS_HISTORY (365d) for 'who read ACCOUNT.ARR, when', POLICY_REFERENCES to prove the mask was attached."),
+    (0, "Native audit surfaces(SQL):", "COPY_HISTORY (14d) for loads, ACCESS_HISTORY (365d) for 'who read ACCOUNT.ARR, when', POLICY_REFERENCES to prove the mask was attached."),
     (0, "Cost attribution:", "per-role warehouses (OG_<ENV>_<ROLE>_WH) + auto-suspend — spend is attributable to reader / analyst / dbt / ingestion, not one shared blob."),
     (0, "Next step:", "dbt source freshness + a monitoring model over _LOAD_LOG turn these into published freshness/quality SLAs."),
 ], 0.7, 1.5, 12.0, 4.7, base=16)
@@ -766,13 +766,56 @@ notes(s, "This is the 'paved path' for a person. The composite role is the key d
          "Onboarding is a two-line PR (demonstrated live with AKASHPAHILWAN, SOURABH_SHINDE, "
          "ANUJKUMAR).")
 
+# ============================================================================= FUTURE ENHANCEMENTS DIVIDER
+divider("Future Enhancements", "Where the platform goes next. Each is an additive step on the foundation, not a rebuild.")
+
+# ============================================================================= FE.1 — ingestion / dbt / governance
+s = content("Future enhancements: ingestion, dbt & governance", "Roadmap")
+bullets(s, [
+    (0, "Ingestion:", ""),
+    (1, "Snowpipe auto-ingest", "— event-driven per-file load; retires the scheduled COPY + watermark (Event Grid / Lambda on arrival)."),
+    (1, "Config-driven multi-event framework", "— onboard a second event type with config, not copy-pasted code."),
+    (0, "dbt / transforms:", ""),
+    (1, "Slim CI (state:modified)", "— build only what changed; contracts on staging models; exposures for BI/AI lineage."),
+    (1, "Domain spoke repos", "— consume the hub's public mart cross-project (full dbt Mesh)."),
+    (0, "Governance & security:", ""),
+    (1, "Row-access policies", "— tenant / region isolation on shared tables."),
+    (1, "OIDC federated CI auth", "— retire long-lived key-pairs; env-specific DEV_* / PROD_* role split for per-env isolation."),
+], 0.7, 1.45, 12.0, 4.85, base=15.5)
+takeaway(s, "The foundation is built; each of these is an additive step on top of it, not a rebuild.")
+footer(s)
+notes(s, "Roadmap, part 1. Snowpipe replaces the scheduled COPY once files land continuously "
+         "(the ingestion design already keeps the same append-only contract). Slim CI + "
+         "staging contracts + spoke repos complete the dbt Mesh story. Row-access policies "
+         "and OIDC are the security hardening; env-specific DEV_*/PROD_* roles (SnowOps-style) "
+         "give per-environment isolation beyond the account-wide functional roles.")
+
+# ============================================================================= FE.2 — observability / cost / AI
+s = content("Future enhancements: observability, cost & AI", "Roadmap")
+bullets(s, [
+    (0, "Observability & SLAs:", ""),
+    (1, "Published data SLAs", "— dbt source freshness + a monitoring model over _LOAD_LOG; freshness / quality targets we measure."),
+    (1, "Alerting", "— test & freshness breaches routed to Slack / on-call."),
+    (0, "Cost / FinOps:", ""),
+    (1, "Per-domain cost dashboards", "— resource monitors + query budgets on the per-role warehouses."),
+    (0, "AI-readiness:", ""),
+    (1, "Governed semantic / metrics layer", "— one metric definition for BI, notebooks and LLMs; no more confidently-wrong AI."),
+    (1, "AI reads products, not raw", "— RAG / agents on contracted marts; masking already applies to an LLM service account."),
+], 0.7, 1.45, 12.0, 4.85, base=15.5)
+takeaway(s, "Trustworthy AI and trustworthy analytics come from the same governed foundation; the semantic layer is the next interface.")
+footer(s)
+notes(s, "Roadmap, part 2. Observability grows from the primitives we built (_LOAD_LOG, dbt "
+         "tests) into published SLAs + alerting. Cost dashboards use the per-role warehouse "
+         "split for attribution. The AI-readiness bets are the differentiator made concrete: "
+         "a governed semantic layer as the single interface, contracts across domains, and "
+         "governance that already travels to any service account including an LLM's.")
+
 # ============================================================================= FINAL CLOSE
 s = content("Close: one governed foundation, analytics & AI on top", "Wrap-up")
 bullets(s, [
     (0, "Foundation → pipelines → self-service → trust:", "one IaC-first, governed platform — and it's running, not just drawn."),
     (0, "Buy the commodity, build the differentiator:", "Fivetran for SaaS; custom Python for telemetry; native dbt for transforms."),
     (0, "Guardrails as paved paths:", "config-driven RBAC + tag masking, per-developer sandboxes, CI/CD to DEV & PROD."),
-    (0, "Tradeoffs I'll defend:", "buy vs build · incremental vs full-refresh · centralized vs federated (dbt Mesh) · key-pair/OIDC secrets."),
     (0, "Scales by construction:", "a 10th domain is the same CSV rows + module — roles, masking, and CI all generated."),
 ], 0.7, 1.5, 12.0, 4.6, base=17)
 takeaway(s, "The measure of the platform: how fast a federated team ships something trustworthy on top of it — safely, and on their own.")
