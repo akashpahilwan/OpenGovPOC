@@ -174,17 +174,20 @@ resource "snowflake_grant_account_role" "svc_user_role" {
   depends_on = [snowflake_account_role.functional]
 }
 
-# ── Personal dev sandboxes — write to OWN schema only (DEV) ──────────────────
-# A developer reads all layers via REVOPS_READER but writes nothing shared.
-# Their personal sandbox (OG_DEV_DB.REVOPS_DEV_<NAME>) write role is granted
-# straight to their user — so they can build/iterate dbt models in their own
-# schema without touching STAGING/MARTS/PROD (that path is the dbt CI job as
-# REVOPS_DEVELOPER). Guarded to active human_users.
+# ── Per-developer composite roles (DEV_<NAME>) — DEV sandboxes ───────────────
+# One PRIMARY role per developer that carries BOTH:
+#   • REVOPS_READER                       — read every layer (all schemas)
+#   • AR_DEV_REVOPS_DEV_<NAME>_W          — write ONLY their own sandbox
+# So a single primary role reads all + writes their sandbox — nothing relies on
+# secondary roles (DEFAULT_SECONDARY_ROLES can be turned off account-wide). This
+# replaces granting the sandbox-write access role straight to the user (which
+# only worked as a *secondary* role). Config source: the DEV row's developers
+# list in environments.csv — onboarding a developer is still one cell edit.
 
 locals {
   dev_developers = contains(keys(local.env_map), "DEV") ? local.env_map["DEV"].developers : []
-  # Real users we can grant a sandbox to: TF-created human_users OR pre-existing
-  # users we assign roles to (user_roles) — e.g. the account owner AKASHPAHILWAN.
+  # Real users we can build a composite role for: TF-created human_users OR
+  # pre-existing users we assign roles to (user_roles) — e.g. owner AKASHPAHILWAN.
   known_users = toset(concat(
     [for k, v in local.human_user_map : v.username],
     [for k, v in local.user_role_map : v.username],
@@ -195,9 +198,31 @@ locals {
   }
 }
 
-resource "snowflake_grant_account_role" "personal_sandbox_owner" {
+resource "snowflake_account_role" "dev_composite" {
+  for_each = local.sandbox_owner_grants
+  name     = "DEV_${each.key}"
+  comment  = "Composite dev role for ${each.key}: REVOPS_READER (read all) + own sandbox write"
+}
+
+# GRANT REVOPS_READER TO ROLE DEV_<NAME>  (read every layer)
+resource "snowflake_grant_account_role" "dev_composite_reader" {
+  for_each         = local.sandbox_owner_grants
+  role_name        = "REVOPS_READER"
+  parent_role_name = snowflake_account_role.dev_composite[each.key].name
+  depends_on       = [snowflake_account_role.functional]
+}
+
+# GRANT AR_DEV_REVOPS_DEV_<NAME>_W TO ROLE DEV_<NAME>  (write own sandbox only)
+resource "snowflake_grant_account_role" "dev_composite_sandbox" {
+  for_each         = local.sandbox_owner_grants
+  role_name        = module.env["DEV"].access_roles_write["REVOPS_DEV_${each.key}"]
+  parent_role_name = snowflake_account_role.dev_composite[each.key].name
+}
+
+# GRANT DEV_<NAME> TO USER <NAME>  (the developer logs in with this as primary)
+resource "snowflake_grant_account_role" "dev_composite_user" {
   for_each   = local.sandbox_owner_grants
-  role_name  = module.env["DEV"].access_roles_write["REVOPS_DEV_${each.key}"]
+  role_name  = snowflake_account_role.dev_composite[each.key].name
   user_name  = each.key
   depends_on = [snowflake_user.human]
 }
