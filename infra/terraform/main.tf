@@ -189,17 +189,13 @@ resource "snowflake_grant_account_role" "svc_user_role" {
 # list in environments.csv — onboarding a developer is still one cell edit.
 
 locals {
-  dev_developers = contains(keys(local.env_map), "DEV") ? local.env_map["DEV"].developers : []
-  # Real users we can build a composite role for: TF-created human_users OR
-  # pre-existing users we assign roles to (user_roles) — e.g. owner AKASHPAHILWAN.
-  known_users = toset(concat(
-    [for k, v in local.human_user_map : v.username],
-    [for k, v in local.user_role_map : v.username],
-  ))
-  sandbox_owner_grants = {
-    for name in local.dev_developers : name => name
-    if contains(local.known_users, name)
-  }
+  # environments.csv's DEV developers list IS the source of truth: every
+  # developer there gets a sandbox + a DEV_<NAME> composite role granted to
+  # their user. Each must be a real Snowflake user — either TF-created
+  # (human_users) or pre-existing (the account owner AKASHPAHILWAN). No direct
+  # REVOPS_READER grant is needed; the composite inherits it.
+  dev_developers       = contains(keys(local.env_map), "DEV") ? local.env_map["DEV"].developers : []
+  sandbox_owner_grants = { for name in local.dev_developers : name => name }
 }
 
 resource "snowflake_account_role" "dev_composite" {

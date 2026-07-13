@@ -504,12 +504,23 @@ def validate(manifests):
     # SERVICE-ONLY roles (human_assignable=false) must never reach a human.
     human_ok = {v["name"] for v in manifests["functional_roles"].values()
                 if v["is_active"] and v.get("human_assignable", True)}
+    # Per-developer composite roles DEV_<NAME> are generated in main.tf (not
+    # functional_roles.csv) from each active env's developers list. They read
+    # everything (inherit REVOPS_READER) + write only their own sandbox, so they
+    # are valid human default_roles even though they aren't functional roles.
+    composite_roles = {
+        f"DEV_{dev}"
+        for e in manifests["environments"].values() if e["is_active"]
+        for dev in e["developers"]
+    }
+    default_role_ok = func_names | composite_roles
+    human_assignable_ok = human_ok | composite_roles
     for k, hu in manifests["human_users"].items():
         if not hu["is_active"]:
             continue
-        if hu["default_role"] and hu["default_role"] not in func_names:
-            sys.exit(f"human_users[{k}]: default_role '{hu['default_role']}' is not an active functional role")
-        if hu["default_role"] and hu["default_role"] not in human_ok:
+        if hu["default_role"] and hu["default_role"] not in default_role_ok:
+            sys.exit(f"human_users[{k}]: default_role '{hu['default_role']}' is not an active functional or composite dev role")
+        if hu["default_role"] and hu["default_role"] not in human_assignable_ok:
             sys.exit(f"human_users[{k}]: default_role '{hu['default_role']}' is SERVICE-ONLY (human_assignable=false)")
     for k, ur in manifests["user_roles"].items():
         if ur["is_active"] and ur["role_name"] not in human_ok:

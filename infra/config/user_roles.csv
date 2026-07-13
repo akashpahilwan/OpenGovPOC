@@ -2,5 +2,3 @@ key,username,role_name,is_active
 demo_admin,AKASH_PAHILWAN,REVOPS_ADMIN,false
 demo_reader,AKASH_PAHILWAN,REVOPS_READER,false
 demo_analyst,AKASH_PAHILWAN,REVOPS_ANALYST,false
-sourabh_reader,SOURABH_SHINDE,REVOPS_READER,true
-akash_reader,AKASHPAHILWAN,REVOPS_READER,true

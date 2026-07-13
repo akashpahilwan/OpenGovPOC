@@ -14,16 +14,6 @@
       "username": "AKASH_PAHILWAN",
       "role_name": "REVOPS_ANALYST",
       "is_active": false
-    },
-    "sourabh_reader": {
-      "username": "SOURABH_SHINDE",
-      "role_name": "REVOPS_READER",
-      "is_active": true
-    },
-    "akash_reader": {
-      "username": "AKASHPAHILWAN",
-      "role_name": "REVOPS_READER",
-      "is_active": true
     }
   }
 }

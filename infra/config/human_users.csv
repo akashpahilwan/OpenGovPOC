@@ -1,2 +1,3 @@
 key,username,login_name,email,default_role,comment,is_active
 sourabh,SOURABH_SHINDE,sourabh.shinde@opengov.com,sourabh.shinde@opengov.com,DEV_SOURABH_SHINDE,RevOps developer: composite role DEV_<NAME> (read-all + own sandbox write); no secondary roles,true
+anuj,ANUJKUMAR,anujkumar@opengov.com,anujkumar@opengov.com,DEV_ANUJKUMAR,RevOps developer: composite role DEV_<NAME> (read-all + own sandbox write); no secondary roles,true

@@ -4,8 +4,16 @@
       "username": "SOURABH_SHINDE",
       "login_name": "sourabh.shinde@opengov.com",
       "email": "sourabh.shinde@opengov.com",
-      "default_role": "REVOPS_READER",
-      "comment": "RevOps developer (read-only human access; writes happen via dbt CI as REVOPS_DEVELOPER)",
+      "default_role": "DEV_SOURABH_SHINDE",
+      "comment": "RevOps developer: composite role DEV_<NAME> (read-all + own sandbox write); no secondary roles",
+      "is_active": true
+    },
+    "anuj": {
+      "username": "ANUJKUMAR",
+      "login_name": "anujkumar@opengov.com",
+      "email": "anujkumar@opengov.com",
+      "default_role": "DEV_ANUJKUMAR",
+      "comment": "RevOps developer: composite role DEV_<NAME> (read-all + own sandbox write); no secondary roles",
       "is_active": true
     }
   }
