@@ -135,7 +135,7 @@ jobs:
         run: |
           printf '%s' "$SF_PRIVATE_KEY" > "$RUNNER_TEMP/deployer.p8"
           export SF_PRIVATE_KEY_PATH="$RUNNER_TEMP/deployer.p8"
-          envs=$(python -c "import json; print(' '.join(v['env'] for v in json.load(open('infra/resources/infrastructure/environments.json')).values() if v['is_active']))")
+          envs=$(python -c "import json; print(' '.join(v['env'] for v in json.load(open('infra/resources/infrastructure/environments.json'))['environments'].values() if v['is_active']))")
           echo "Active envs: $envs"
           for e in $envs; do
             echo "== apply_pii_tags.py --env $e =="
