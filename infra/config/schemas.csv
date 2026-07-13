@@ -5,3 +5,4 @@ staging,STAGING,DATA,true,dbt HUB project output - typed/cleaned models (stg_*),
 marts_revops,MARTS_REVOPS,DATA,true,dbt RevOps SPOKE project output - business marts (mart_revops__*),true
 governance,GOVERNANCE,GOVERNANCE,false,Masking policies + classification tags - no data,true
 dbt,DBT,DBT,false,dbt Projects on Snowflake - native DBT PROJECT objects live here,true
+marts_finance,MARTS_FINANCE,DATA,true,Finance domain marts (dbt) - demonstrates domain-scoped analyst access,true

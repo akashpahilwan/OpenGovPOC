@@ -1,5 +1,6 @@
 key,role,env,schema,level,is_active
 analyst_marts,REVOPS_ANALYST,ALL,MARTS_*,R,true
+finance_analyst_marts,FINANCE_ANALYST,ALL,MARTS_FINANCE,R,true
 reader_all,REVOPS_READER,ALL,*,R,true
 developer_raw_fivetran,REVOPS_DEVELOPER,ALL,SALESFORCE_RAW_FIVETRAN,W,true
 developer_raw_adls,REVOPS_DEVELOPER,ALL,PRODUCT_EVENTS_RAW_ADLS,W,true

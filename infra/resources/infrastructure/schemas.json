@@ -41,6 +41,13 @@
       "writer_owns_future": false,
       "comment": "dbt Projects on Snowflake - native DBT PROJECT objects live here",
       "is_active": true
+    },
+    "marts_finance": {
+      "schema": "MARTS_FINANCE",
+      "kind": "DATA",
+      "writer_owns_future": true,
+      "comment": "Finance domain marts (dbt) - demonstrates domain-scoped analyst access",
+      "is_active": true
     }
   }
 }

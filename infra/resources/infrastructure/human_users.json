@@ -15,6 +15,14 @@
       "default_role": "DEV_ANUJKUMAR",
       "comment": "RevOps developer: composite role DEV_<NAME> (read-all + own sandbox write); no secondary roles",
       "is_active": true
+    },
+    "priya": {
+      "username": "PRIYA_SHARMA",
+      "login_name": "priya.sharma@opengov.com",
+      "email": "priya.sharma@opengov.com",
+      "default_role": "FINANCE_ANALYST",
+      "comment": "Finance domain analyst - reads MARTS_FINANCE only",
+      "is_active": true
     }
   }
 }

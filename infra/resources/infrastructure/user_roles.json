@@ -14,6 +14,11 @@
       "username": "AKASH_PAHILWAN",
       "role_name": "REVOPS_ANALYST",
       "is_active": false
+    },
+    "priya_finance": {
+      "username": "PRIYA_SHARMA",
+      "role_name": "FINANCE_ANALYST",
+      "is_active": true
     }
   }
 }

@@ -2,3 +2,4 @@ key,username,role_name,is_active
 demo_admin,AKASH_PAHILWAN,REVOPS_ADMIN,false
 demo_reader,AKASH_PAHILWAN,REVOPS_READER,false
 demo_analyst,AKASH_PAHILWAN,REVOPS_ANALYST,false
+priya_finance,PRIYA_SHARMA,FINANCE_ANALYST,true

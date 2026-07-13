@@ -58,6 +58,15 @@
       "warehouse": "INGEST_FIVETRAN",
       "human_assignable": false,
       "is_active": true
+    },
+    "finance_analyst": {
+      "name": "FINANCE_ANALYST",
+      "comment": "Finance domain analyst - reads MARTS_FINANCE ONLY (not generic MARTS_*); demonstrates domain-scoped least privilege",
+      "inherits_from": [],
+      "granted_to": "SYSADMIN",
+      "warehouse": "ANALYST",
+      "human_assignable": true,
+      "is_active": true
     }
   }
 }

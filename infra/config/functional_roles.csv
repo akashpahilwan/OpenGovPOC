@@ -5,3 +5,4 @@ revops_developer,REVOPS_DEVELOPER,Read/write RAW + STAGING + MARTS (all envs); S
 revops_admin,REVOPS_ADMIN,Full domain access; only role that sees unmasked ARR,REVOPS_DEVELOPER,SYSADMIN,ADMIN,true,true
 revops_ingestion_adls,REVOPS_INGESTION_ADLS,Write RAW telemetry (PRODUCT_EVENTS_RAW_ADLS) - Python/ADLS loader; service-only,,SYSADMIN,INGEST_ADLS,false,true
 revops_ingestion_fivetran,REVOPS_INGESTION_FIVETRAN,All privileges on tables+views in RAW Salesforce (SALESFORCE_RAW_FIVETRAN) - Fivetran connector; service-only,,SYSADMIN,INGEST_FIVETRAN,false,true
+finance_analyst,FINANCE_ANALYST,Finance domain analyst - reads MARTS_FINANCE ONLY (not generic MARTS_*); demonstrates domain-scoped least privilege,,SYSADMIN,ANALYST,true,true

@@ -7,6 +7,13 @@
       "level": "R",
       "is_active": true
     },
+    "finance_analyst_marts": {
+      "role": "FINANCE_ANALYST",
+      "env": "ALL",
+      "schema": "MARTS_FINANCE",
+      "level": "R",
+      "is_active": true
+    },
     "reader_all": {
       "role": "REVOPS_READER",
       "env": "ALL",
