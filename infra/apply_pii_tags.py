@@ -107,14 +107,21 @@ def main():
                 ok += 1
                 print(f"OK       {stmt}")
             except Exception as e:
+                msg = str(e).lower()
                 # "already has a masking policy" => binding already in place; idempotent no-op.
-                if "already" in str(e).lower():
+                if "already" in msg:
                     skipped += 1
                     print(f"SKIP     {stmt}  (already applied)")
-                else:  # e.g. table not synced/seeded yet — report, don't abort the batch
+                # Object not present in this env yet (e.g. a Fivetran RAW table
+                # not synced to PROD): benign — the SET TAG re-applies once it
+                # exists (dbt post-hook / next run). Don't abort the deploy.
+                elif "does not exist" in msg or "42s02" in msg:
+                    skipped += 1
+                    print(f"SKIP     {stmt}  (object not present in {db} yet)")
+                else:  # genuine, unexpected failure
                     failed += 1
                     print(f"FAILED   {stmt}\n         {e}")
-        print(f"\n{ok} applied, {skipped} already-set, {failed} failed.")
+        print(f"\n{ok} applied, {skipped} skipped, {failed} failed.")
         if failed:
             sys.exit(1)
     finally:
