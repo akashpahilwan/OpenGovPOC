@@ -29,11 +29,10 @@ move server-side, not through this host.
 
 ## Idempotency
 
-- **Per-file** — before writing, the file's prior rows are cleared from all
-  three tables, then re-inserted; and files already in `PAGE_VIEWS_LOAD_LOG` are
-  skipped by default. So re-running a file never duplicates its rows, and a
-  **new** file dropped into an already-processed `dt=/hr=` folder is still picked
-  up (new filename).
+- **Per-file** — files already in `PAGE_VIEWS_LOAD_LOG` are **skipped** by
+  default, so re-running a file never duplicates its rows **without mutating RAW**
+  (RAW stays append-only — nothing is deleted). A **new** file dropped into an
+  already-processed `dt=/hr=` folder is still picked up (new filename).
 - **Row-level `event_id` dedup is NOT done here** — RAW keeps every landed row
   (in-file and cross-file duplicates included, as auditable history). The
   deduplicated current view is built in **dbt staging** (Task 3) via
@@ -45,7 +44,7 @@ move server-side, not through this host.
 export SF_ORGANIZATION_NAME=IVUTLPR SF_ACCOUNT_NAME=JZ06632
 export SF_USERNAME=OG_INGEST_ADLS_SVC          # needs its RSA key attached (ALTER USER)
 export SF_PRIVATE_KEY_PATH=/path/to/ingest_key.p8
-# role/warehouse default to REVOPS_INGESTION_ADLS / OG_<ENV>_INGEST_XS_WH
+# role/warehouse default to REVOPS_INGESTION_ADLS / OG_<ENV>_INGEST_ADLS_WH
 
 python ingest_page_views.py --env DEV                              # incremental (skip loaded files)
 python ingest_page_views.py --env DEV --path dt=2026-05-01/hr=09   # scope to a day/hour folder
@@ -53,9 +52,10 @@ python ingest_page_views.py --env DEV --path dt=2026-05-01/hr=09 --backfill   # 
 python ingest_page_views.py --env DEV --backfill                   # FULL-SET backfill (every file)
 ```
 
-Backfill/reprocess is idempotent per file: a file's prior rows are cleared from
-all three tables and re-inserted, so reprocessing (a folder or the full set)
-never duplicates rows — including quarantine.
+`--backfill` bypasses the skip and **re-appends** the files (RAW stays
+append-only — never mutated). Any resulting duplicate rows are collapsed by the
+`event_id` dedup in dbt staging, which also catches the same event arriving in a
+**different** file (a producer resend) that a file-level skip cannot.
 
 Path layout: `og-telemetry/<env>/product_events/page_views/dt=YYYY-MM-DD/hr=HH/`
 (`hr` is 24-hour, `00`–`23`).

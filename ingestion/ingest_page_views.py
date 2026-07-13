@@ -37,8 +37,9 @@ IDEMPOTENCY (RAW is append-only; dedup is a downstream concern):
 
 BACKFILL:
   --path dt=YYYY-MM-DD/hr=HH   scope to one folder (or any sub-prefix)
-  --backfill                   reprocess files even if already in the load log
-                               (safe: the event_id MERGE dedups the rows)
+  --backfill                   reprocess files even if already in the load log;
+                               rows simply RE-APPEND to RAW (still append-only) and
+                               dbt staging dedups them on event_id (QUALIFY)
 
 REUSABILITY:
   The engine is parameterized by EVENTS[<name>] (stage, tables, contract fields).
@@ -155,13 +156,6 @@ def validate(record: dict, cfg: EventConfig):
 
 # ── Per-file load (one transaction) ─────────────────────────────────────────
 
-def _delete_file_rows(cur, table_fqn: str, filename_col: str, filename: str):
-    """Remove any prior rows for this file (idempotent per-file load). A no-op
-    for a never-seen file; on reprocess/backfill it clears the file's old rows
-    so we never duplicate them. Cross-file dups are untouched (staging dedups)."""
-    cur.execute(f"DELETE FROM {table_fqn} WHERE {filename_col} = ?", (filename,))
-
-
 def append_records(cur, cfg: EventConfig, rows):
     """rows: [(event_id, account_id, event_ts, payload_str, filename)] for the
     FULL SET (valid AND invalid). APPEND-ONLY INSERT into RAW (no MERGE) — RAW
@@ -196,9 +190,11 @@ def append_quarantine(cur, cfg: EventConfig, rows):
 
 
 def process_file(conn, cfg: EventConfig, filename: str, records):
-    """records: [payload_json_str]. Idempotent per file: clear this file's old
-    rows, then write valid + quarantine + log — all in ONE transaction, so a
-    file is all-or-nothing and never leaves duplicates for itself."""
+    """records: [payload_json_str]. APPEND-ONLY: write the full set to RAW +
+    quarantine the invalid + one load-log row, all in ONE transaction (a file is
+    all-or-nothing). RAW is never mutated here: re-running an already-loaded file
+    is prevented upstream by the file-level skip; a --backfill simply re-appends
+    and dbt staging dedups on event_id."""
     all_rows, quarantine = [], []
     for payload_str in records:
         rec = json.loads(payload_str)
@@ -211,12 +207,7 @@ def process_file(conn, cfg: EventConfig, filename: str, records):
 
     cur = conn.cursor()
     try:
-        # Idempotent per file across all three tables (no dup rows on reprocess).
-        _delete_file_rows(cur, f"{cfg.schema}.{cfg.target_table}", "_filename", filename)
-        _delete_file_rows(cur, f"{cfg.schema}.{cfg.quarantine_table}", "_filename", filename)
-        _delete_file_rows(cur, f"{cfg.schema}.{cfg.load_log_table}", "file_name", filename)
-
-        loaded = append_records(cur, cfg, all_rows)   # full set -> RAW
+        loaded = append_records(cur, cfg, all_rows)   # full set -> RAW (append-only)
         quar = append_quarantine(cur, cfg, quarantine)  # bad ones -> quarantine audit
         cur.execute(
             f"INSERT INTO {cfg.schema}.{cfg.load_log_table} "
