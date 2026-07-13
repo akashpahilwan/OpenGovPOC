@@ -341,22 +341,8 @@ notes(s, "The decision rule: buy vs build on control, cost curve, and whether a 
          "cost at Fivetran's per-row pricing would be brutal, and we want near-real-time "
          "via S3 events → Lambda. So we own that path. Be ready to defend the cost math.")
 
-# ============================================================================= SLIDE 5 — Custom connector engineering
-s = content("Custom connectors: the hard parts, handled", "Pipelines")
-bullets(s, [
-    (0, "Schema drift:", "land raw as VARIANT/JSON — schema-on-read; explicit contract + registry; additive evolution; alert on breaking change."),
-    (0, "Pagination:", "cursor / keyset over offset; persist a high-water mark; fully resumable from the last checkpoint."),
-    (0, "Rate limiting:", "exponential backoff + jitter; honor Retry-After; token-bucket throttle; bounded concurrency."),
-    (0, "Reliability & idempotency:", "dedup on a natural key; checkpoint per page/file; failures route to a dead-letter / quarantine."),
-    (0, "Reusable by design:", "one config-driven framework, many sources — add a source with config, not a copy-paste."),
-], 0.7, 1.55, 12.0, 4.4, base=18)
-takeaway(s, "A connector is a distributed-systems problem — treat retries, checkpoints, and drift as first-class.")
-footer(s, 5)
-notes(s, "This is where hands-on depth shows. Emphasize: never block ingestion on a schema "
-         "change — land as VARIANT, evolve additively, and alert. Keyset pagination + a "
-         "persisted watermark makes runs resumable. Backoff + Retry-After keeps us a good "
-         "API citizen. Idempotency via natural key is what makes re-runs safe — this is the "
-         "exact pattern I'll implement in the Part 2 telemetry script.")
+# (SLIDE removed — generic connector theory; API pagination/rate-limiting fielded
+#  verbally, and our ingestion is shown concretely on "Reliable landing" + Part 2 P2.4)
 
 # ============================================================================= SLIDE 5B — Schema drift (CI/CD)
 s = content("Schema drift when objects ship via CI/CD", "Pipelines")
@@ -529,57 +515,30 @@ notes(s, "Snowflake's recommended two-tier model: access roles hold object privi
          "own functional roles (dbt vs human analyst). Row-access policies enforce "
          "tenant/region isolation on shared tables. This exact model is what I build in Part 2.")
 
-# ============================================================================= SLIDE 11 — PII & masking
-s = content("PII & column security for Finance / HR", "Trust & Governance")
-bullets(s, [
-    (0, "Dynamic data masking:", "policies on sensitive columns (ARR, salary, PII) — masked/NULL unless a privileged role."),
-    (0, "Tag-based masking:", "tag a column once (PII, FINANCIAL) → policy applies everywhere; scales across domains automatically."),
-    (0, "Row access policies:", "tenant / region / business-unit isolation on shared tables — multi-tenant by design."),
-    (0, "Auditing:", "ACCESS_HISTORY answers 'who read ACCOUNT.ARR, and when'; ACCOUNT_USAGE for governance reporting."),
-    (0, "Least privilege everywhere:", "no static credentials — key-pair / OIDC only; secrets from env / secret manager."),
-], 0.7, 1.55, 12.0, 4.4, base=18)
-takeaway(s, "Governance is data-driven: tag once, enforce everywhere, and prove access after the fact.")
-footer(s, 11)
-notes(s, "Enterprise edition gives us dynamic masking, row access policies, and "
-         "ACCESS_HISTORY — I confirmed the account is Enterprise. The scaling trick is "
-         "TAG-based masking: analysts tag columns; the policy is attached to the tag, so "
-         "coverage follows the tag across every table and domain. ACCESS_HISTORY is the "
-         "answer to the audit probe on ARR. In Part 2 I implement the ARR masking policy: "
-         "NULL below REVOPS_ADMIN, real value for REVOPS_ADMIN.")
+# (SLIDE removed — generic PII/masking; built concretely in Part 2 P2.3
+#  "ARR/amount masking — who sees what" + appendix A1)
 
 # ============================================================================= SLIDE 12 — Observability & SLAs
-s = content("Observability & data SLAs from day one", "Trust & Governance")
+s = content("Observability — what we built", "Trust & Governance")
 bullets(s, [
-    (0, "Monitor every source & mart:", "freshness, volume, schema, and quality checks — automated, not eyeballed."),
-    (0, "Quality as code:", "dbt tests + source freshness run in CI and in production; breaches alert immediately."),
-    (0, "Published data SLAs:", "each data product declares freshness, availability, and quality targets — and we measure them."),
-    (0, "Pipeline observability:", "run metadata, lineage, and failure alerting to Slack / on-call."),
-    (0, "Cost observability:", "per-warehouse / per-domain spend, query monitors, auto-suspend — FinOps built in."),
-], 0.7, 1.55, 12.0, 4.4, base=18)
-takeaway(s, "If it isn't measured, it isn't trusted — SLAs turn 'the data looks off' into an alert.")
-footer(s, 12)
-notes(s, "Observability is a day-one concern, not a phase-2 add-on. The mindset: treat data "
-         "products like services with SLAs. dbt tests catch quality regressions in CI "
-         "before they ship. Cost observability matters because Snowflake spend is "
-         "consumption-based — per-domain attribution enables chargeback and keeps the "
-         "platform's economics honest.")
+    (0, "Load observability — PAGE_VIEWS_LOAD_LOG:", "one row per ingestion run (file, records loaded, quarantined, timestamp) — an audit trail that outlives COPY's 64-day history."),
+    (0, "Quarantine as a signal:", "bad rows land in PAGE_VIEWS_QUARANTINE, countable per run (PROD: 9 loaded / 5 quarantined) — a reject-rate you can alert on."),
+    (0, "Quality as code, gated in CI:", "dbt not_null / unique / accepted_values / relationships run on every preprod & prod build — a red test blocks the deploy."),
+    (0, "Native audit surfaces:", "COPY_HISTORY (14d) for loads, ACCESS_HISTORY (365d) for 'who read ACCOUNT.ARR, when', POLICY_REFERENCES to prove the mask was attached."),
+    (0, "Cost attribution:", "per-role warehouses (OG_<ENV>_<ROLE>_WH) + auto-suspend — spend is attributable to reader / analyst / dbt / ingestion, not one shared blob."),
+    (0, "Next step:", "dbt source freshness + a monitoring model over _LOAD_LOG turn these into published freshness/quality SLAs."),
+], 0.7, 1.5, 12.0, 4.7, base=16)
+takeaway(s, "We built the observable primitives — a per-file load log, a quarantine table, CI-gated tests, and native audit views — so 'did the load run and was it clean?' is a query, not a guess.")
+footer(s)
+notes(s, "REWRITTEN to what we actually built, not generic SLA talk. Concrete artifacts: the "
+         "PAGE_VIEWS_LOAD_LOG row-per-run + quarantine table give load observability and a "
+         "reject rate; dbt tests gate every CI build; COPY_HISTORY / ACCESS_HISTORY / "
+         "POLICY_REFERENCES are the native audit surfaces (ACCESS_HISTORY answers the ARR "
+         "probe); per-role warehouses make cost attributable. Full published SLAs (freshness "
+         "targets, alerting to Slack/on-call) are the honest next step on top of these.")
 
-# ============================================================================= SLIDE 13 — CI/CD & IaC
-s = content("CI/CD & IaC — the delivery backbone", "Trust & Governance")
-bullets(s, [
-    (0, "Everything as code:", "Terraform (infra + RBAC), dbt (transforms), Python (ingestion) — versioned & reviewed."),
-    (0, "PR-gated pipeline:", "plan / lint / test on pull request → apply on merge; dev → prod environments."),
-    (0, "Secure auth:", "OIDC or key-pair — no static secrets; fork PRs never see production credentials."),
-    (0, "Standards enforced:", "sqlfluff, terraform fmt/validate, naming rules — the linter is the reviewer."),
-    (0, "Idempotent & safe:", "scripts re-run cleanly and survive half-failures; a PR comment summarizes changes + tests."),
-], 0.7, 1.55, 12.0, 4.4, base=18)
-takeaway(s, "The pipeline is the control plane — every change is reviewed, tested, and reversible.")
-footer(s, 13)
-notes(s, "This is the enforcement mechanism for everything else. Key security points the "
-         "panel probes: OIDC/key-pair over passwords, and protecting secrets from malicious "
-         "fork PRs (secrets aren't exposed to untrusted PRs; apply only runs post-merge). "
-         "Idempotency + half-failure safety is what makes automated provisioning trustworthy. "
-         "The PR-comment summary is exactly the CI deliverable in Part 2.")
+# (SLIDE removed — generic CI/CD; built concretely in Part 2 P2.6 (env promotion)
+#  + appendix A3 (CI/CD security & idempotency))
 
 # ============================================================================= SLIDE 14 — Differentiator
 s = content("Beyond the brief: making the platform AI-ready", "Differentiating Perspective")
@@ -588,8 +547,8 @@ bullets(s, [
     (0, "Governed semantic / metrics layer:", "define metrics once (revenue, pipeline, churn) → one source of truth for BI, notebooks, and LLMs."),
     (0, "Data contracts:", "producers commit to schema + semantics; breaking changes are blocked in CI — trust shifts left."),
     (0, "AI consumes products, not raw:", "RAG and agents read documented, contracted marts + the semantic layer — never RAW."),
-    (0, "Governance travels to AI:", "masking & row-access policies apply to LLM service accounts too — a model can't leak ARR."),
-], 0.7, 1.5, 12.0, 4.5, base=18)
+    (0, "Governance already travels — true in this build:", "our tag-masking + RBAC bind to the SESSION, not the tool. An LLM service account holding REVOPS_READER gets NULL for ARR today, exactly like a human reader — there is no AI bypass to build."),
+], 0.7, 1.5, 12.0, 4.6, base=17)
 takeaway(s, "Trustworthy AI and trustworthy analytics come from the same governed foundation — the semantic layer is the interface.")
 footer(s, 14)
 notes(s, "This is my point of view. The trap everyone is walking into: pointing LLMs at raw "
@@ -600,21 +559,7 @@ notes(s, "This is my point of view. The trap everyone is walking into: pointing 
          "apply to the LLM's service account — governance isn't bypassed by AI. This is how "
          "OpenGov gets trustworthy AI, not just more AI.")
 
-# ============================================================================= SLIDE 15 — Close
-s = content("Part 1 recap → into the hands-on build", "Transition")
-bullets(s, [
-    (0, "Foundation → pipelines → self-service → trust:", "one governed, IaC-first platform serving every domain."),
-    (0, "Buy the commodity, build the differentiator:", "Fivetran for SaaS; custom Python for telemetry & the semantic layer."),
-    (0, "Guardrails as paved paths:", "self-service onboarding, RBAC + masking, observability — built in from day one."),
-    (0, "Key tradeoffs I'll defend:", "Fivetran vs custom, incremental vs full-refresh, centralized vs federated (dbt Mesh)."),
-    (0, "Next — the hands-on build (RevOps):", "RBAC + ARR masking · S3→Snowflake ingestion · dbt marts · PR-gated CI/CD."),
-], 0.7, 1.5, 12.0, 4.6, base=18)
-takeaway(s, "The measure of the platform: how fast a federated team can ship something trustworthy on top of it.")
-footer(s, 15)
-notes(s, "Recap the four-part arc and restate the thesis. Signal you're ready for the "
-         "hands-on deep dive and for tradeoff questions. End on the platform-as-product "
-         "line — the success metric is federated teams shipping trustworthy data & AI "
-         "products quickly, safely, and independently.")
+# (SLIDE removed — Part-1 recap/transition; the Part 2 divider handles the handoff)
 
 # ============================================================================= shared helpers for Part 2 / Appendix
 def divider(title, sub):
