@@ -380,7 +380,7 @@ bullets(s, [
     (0, "Custom path — schema-on-read:", "RAW lands each record as a VARIANT; a new source field needs zero DDL, zero deploy — typed at read time in dbt."),
     (0, "Detect, don't auto-alter:", "compare the payload to a registered contract — additive → log + surface; breaking → alert + quarantine. CI/CD never mutates a live table from drift."),
     (0, "Promote a field = a pull request:", "expose it by adding one typed column in dbt; CI runs contracts + tests; review + merge deploys it."),
-    (0, "Fivetran — schema-on-write:", "it types columns and ALTERs its own RAW tables on drift; the dbt source contract + tests are our CI tripwire one layer down."),
+    (0, "Fivetran — schema-on-write:", "it types columns and ALTERs its own RAW tables on drift; the dbt source contract + tests are our CI tripwire one layer down(If needed)."),
 ], 0.65, 1.5, 7.05, 4.7, base=16.5)
 code_box(s, 8.0, 1.6, 4.78, 4.55, [
     "-- RAW - schema-on-read (stable DDL)",
@@ -442,11 +442,11 @@ notes(s, "RAW is the system of record — never mutate it. Partition for replay 
 # ============================================================================= SLIDE 7 — Layer model
 s = content("Snowflake layer model & environment strategy", "Foundation")
 bullets(s, [
-    (0, "Database-per-layer:", "RAW → STAGING → MARTS → SANDBOX; clear ownership and blast-radius per layer."),
+    (0, "Database-per-layer:", "RAW → STAGING → MARTS → SANDBOX(Ideal); clear ownership and blast-radius per layer."),
     (1, "RAW", "— loader-owned, immutable, source-system schemas, no business logic."),
     (1, "STAGING", "— dbt-owned; typed, renamed, conformed; light transforms."),
     (1, "MARTS", "— dbt-owned; business-ready, domain schemas, tested & documented."),
-    (1, "SANDBOX", "— analyst scratch; safe to break, no downstream dependencies."),
+    (1, "SANDBOX", "— analyst-writable scratch; readers & developers read-only, admin full; safe to break, no downstream deps."),
     (0, "Warehouse strategy:", "separate ingest / transform / BI warehouses; right-sized; auto-suspend for cost."),
     (0, "Environments:", "dev and prod isolated; promotion through CI, never manual edits in prod."),
 ], 0.7, 1.5, 12.0, 4.7, base=18)
@@ -463,7 +463,7 @@ bullets(s, [
     (0, "Layered models:", "staging (1:1 with source) → intermediate → marts (by domain)."),
     (0, "Organize by domain, not by one giant project:", "folders + CODEOWNERS per domain (revops, finance, product, hr)."),
     (0, "dbt Mesh:", "each domain exposes PUBLIC models via contracts; consumers depend on stable interfaces, not internals."),
-    (0, "Quality is code:", "generic + singular tests, model contracts, source freshness, exposures for BI/AI lineage."),
+    (0, "Quality is code:", "generic + singular tests, model contracts, source freshness(ideal), exposures for BI/AI lineage."),
     (0, "Incremental vs full-refresh:", "incremental for high-volume events (telemetry); full-refresh for small dimensions."),
     (0, "Fast CI(Ideal):", "slim CI builds only state:modified+ — seconds, not full rebuilds."),
 ], 0.7, 1.55, 12.0, 4.5, base=18)
@@ -480,7 +480,7 @@ s = content("Self-service: onboard a domain in a pull request", "Self-service")
 bullets(s, [
     (0, "One Terraform module — domain_workspace:", "input a domain name, get a full, governed workspace."),
     (1, "Provisions", "schemas (staging / marts / sandbox), functional + access roles, service accounts, a warehouse."),
-    (1, "Applies", "default grants, PII tags, cost limits, and naming standards automatically."),
+    (1, "Applies", "default grants, PII tags, and naming standards automatically."),
     (0, "Golden-path templates:", "starter dbt project, connector config, and CI workflow scaffolded for the team."),
     (0, "PR-driven:", "a domain is onboarded by opening a PR — reviewed, planned, applied by CI. No tickets."),
     (0, "Outcome:", "consistent and governed by construction; hours, not weeks; the platform team doesn't become the bottleneck."),
@@ -553,7 +553,7 @@ bullets(s, [
     (0, "Load observability — PAGE_VIEWS_LOAD_LOG:", "one row per ingestion run (file, records loaded, quarantined, timestamp) — an audit trail that outlives COPY's 64-day history."),
     (0, "Quarantine as a signal:", "bad rows land in PAGE_VIEWS_QUARANTINE, countable per run (PROD: 9 loaded / 5 quarantined) — a reject-rate you can alert on."),
     (0, "Quality as code, gated in CI:", "dbt not_null / unique / accepted_values / relationships run on every preprod & prod build — a red test blocks the deploy."),
-    (0, "Native audit surfaces(SQL):", "COPY_HISTORY (14d) for loads, ACCESS_HISTORY (365d) for 'who read ACCOUNT.ARR, when', POLICY_REFERENCES to prove the mask was attached."),
+    (0, "Native audit surfaces(SQL):", "COPY_HISTORY (14d) for loads, ACCESS_HISTORY (365d) for 'who read ACCOUNT.ARR, when'."),
     (0, "Cost attribution:", "per-role warehouses (OG_<ENV>_<ROLE>_WH) + auto-suspend — spend is attributable to reader / analyst / dbt / ingestion, not one shared blob."),
     (0, "Next step:", "dbt source freshness + a monitoring model over _LOAD_LOG turn these into published freshness/quality SLAs."),
 ], 0.7, 1.5, 12.0, 4.7, base=16)

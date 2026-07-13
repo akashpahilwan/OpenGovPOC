@@ -58,6 +58,7 @@ OG_<ENV>_DB
 ├── MARTS_REVOPS               dbt RevOps marts (built by REVOPS_DEVELOPER)
 ├── GOVERNANCE                 PII_FINANCIAL tag + masking policy (no data)
 ├── DBT                        native "dbt Projects on Snowflake" objects
+├── SANDBOX                    shared analyst scratch (REVOPS_ANALYST writes; readers/developers read-only; admin full)
 └── REVOPS_DEV_<NAME>          per-developer sandbox (DEV only)
 ```
 
