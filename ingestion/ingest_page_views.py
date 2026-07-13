@@ -117,7 +117,7 @@ def connect(env: str):
         user=os.environ["SF_USERNAME"],
         private_key=der,
         role=os.environ.get("SF_ROLE", "REVOPS_INGESTION_ADLS"),
-        warehouse=os.environ.get("SF_WAREHOUSE", f"OG_{env}_INGEST_XS_WH"),
+        warehouse=os.environ.get("SF_WAREHOUSE", f"OG_{env}_INGEST_ADLS_WH"),
         database=f"OG_{env}_DB",
         schema=None,  # set per-event below
         autocommit=False,  # we manage per-file transactions explicitly
