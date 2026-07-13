@@ -76,7 +76,7 @@ def text_in(shape, text, size=14, color=INK, bold=False, align=PP_ALIGN.CENTER,
     tf.margin_left = Inches(0.06); tf.margin_right = Inches(0.06)
     tf.margin_top = Inches(0.03); tf.margin_bottom = Inches(0.03)
     p = tf.paragraphs[0]; p.alignment = align
-    r = p.add_run(); r.text = text
+    r = p.add_run(); r.text = _dash(text)
     r.font.size = Pt(size); r.font.bold = bold; r.font.color.rgb = color; r.font.name = font
     return tf
 
@@ -113,7 +113,7 @@ def title_bar(slide, title, kicker=None):
         p = tf.add_paragraph()
     else:
         p = tf.paragraphs[0]
-    r = p.add_run(); r.text = title
+    r = p.add_run(); r.text = tidy(title)
     r.font.size = Pt(26); r.font.bold = True; r.font.color.rgb = WHITE; r.font.name = FONT
     place_logo(slide, SW.inches - 0.72, 0.56, 0.6)          # mark in the bar
 
@@ -122,11 +122,40 @@ def footer(slide, n=None):
     PAGE[0] += 1
     tb, tf = textbox(slide, 0.55, 7.06, 8.0, 0.35)
     p = tf.paragraphs[0]; r = p.add_run()
-    r.text = "OpenGov Data Platform  ·  Case Study — Viewpoint  ·  Akash Pahilwan"
+    r.text = "OpenGov Data Platform  ·  Case Study  ·  Akash Pahilwan"
     r.font.size = Pt(9); r.font.color.rgb = GRAY; r.font.name = FONT
     tb2, tf2 = textbox(slide, SW.inches - 1.4, 7.06, 0.9, 0.35)
     p2 = tf2.paragraphs[0]; p2.alignment = PP_ALIGN.RIGHT; r2 = p2.add_run()
     r2.text = str(PAGE[0]); r2.font.size = Pt(9); r2.font.color.rgb = GRAY; r2.font.name = FONT
+
+# lowercase technical tokens that must NOT be sentence-cased
+_TECH = {"dbt", "event_id", "stage_name", "is_deleted", "account_id", "opportunity_id",
+         "payload", "sync_config.py", "apply_pii_tags.py", "ingest_page_views.py"}
+
+def _dash(t):
+    """Replace em/en dashes with commas (avoid the em-dash 'AI tell')."""
+    if not t:
+        return t
+    return (t.replace(" — ", ", ").replace(" – ", ", ")
+             .replace("—", ", ").replace("–", ", "))
+
+def tidy(t):
+    """Dash-clean + sentence-case the first word (unless it's a technical token)."""
+    t = _dash(t)
+    if not t:
+        return t
+    t = t.lstrip()
+    while t[:1] in (",", ";"):          # a body that began with a dash now leads with ", "
+        t = t[1:].lstrip()
+    i = 0
+    while i < len(t) and not t[i].isalpha():
+        i += 1
+    if i < len(t):
+        w = t[i:].split(" ", 1)[0].strip(".,:;/()")
+        base = w.lower().split("-")[0].split(".")[0]   # e.g. "dbt-owned" -> "dbt"
+        if w.lower() not in _TECH and base not in _TECH and "_" not in w:
+            t = t[:i] + t[i].upper() + t[i + 1:]
+    return t
 
 def bullets(slide, items, x, y, w, h, base=18):
     """items: list of (level:int, lead:str|None, body:str)."""
@@ -137,14 +166,14 @@ def bullets(slide, items, x, y, w, h, base=18):
         p.line_spacing = 1.07
         size = base if level == 0 else base - 3
         g = p.add_run()
-        g.text = "▸  " if level == 0 else "        –  "
+        g.text = "▸  " if level == 0 else "        ·  "
         g.font.size = Pt(size); g.font.name = FONT
         g.font.color.rgb = ACCENT if level == 0 else GRAY
         if lead:
-            r = p.add_run(); r.text = lead + ("   " if body else "")
+            r = p.add_run(); r.text = _dash(lead) + ("   " if body else "")
             r.font.bold = True; r.font.size = Pt(size); r.font.color.rgb = INK; r.font.name = FONT
         if body:
-            r2 = p.add_run(); r2.text = body
+            r2 = p.add_run(); r2.text = tidy(body)
             r2.font.size = Pt(size); r2.font.name = FONT
             r2.font.color.rgb = INK if level == 0 else GRAYINK
     return tb
@@ -157,7 +186,7 @@ def takeaway(slide, text, y=6.35):
     p = tf.paragraphs[0]
     r0 = p.add_run(); r0.text = "Takeaway   "; r0.font.bold = True
     r0.font.size = Pt(13); r0.font.color.rgb = BLUE; r0.font.name = FONT
-    r1 = p.add_run(); r1.text = text
+    r1 = p.add_run(); r1.text = tidy(text)
     r1.font.size = Pt(13); r1.font.color.rgb = INK; r1.font.name = FONT
 
 def code_box(slide, x, y, w, h, lines, title=None, fs=10):
@@ -187,7 +216,7 @@ def code_box(slide, x, y, w, h, lines, title=None, fs=10):
             r2.font.name = "Consolas"; r2.font.size = Pt(fs); r2.font.color.rgb = CODECMT
 
 def notes(slide, text):
-    slide.notes_slide.notes_text_frame.text = text
+    slide.notes_slide.notes_text_frame.text = _dash(text)
 
 def content(title, kicker=None):
     s = blank(); set_bg(s, WHITE); title_bar(s, title, kicker); return s
@@ -203,7 +232,7 @@ p2 = tf.add_paragraph(); p2.space_before = Pt(6)
 r2 = p2.add_run(); r2.text = "Architecture & Data Foundation  ·  Hands-On Build (RevOps)"
 r2.font.size = Pt(20); r2.font.color.rgb = LAV; r2.font.name = FONT
 p3 = tf.add_paragraph(); p3.space_before = Pt(18)
-r3 = p3.add_run(); r3.text = "Case Study — Viewpoint"
+r3 = p3.add_run(); r3.text = "Case Study Presentation"
 r3.font.size = Pt(15); r3.font.color.rgb = RGBColor(0xC7,0xD3,0xE0); r3.font.name = FONT
 p4 = tf.add_paragraph()
 r4 = p4.add_run(); r4.text = "Akash Pahilwan  ·  Senior Data Platform Engineer"
@@ -265,8 +294,8 @@ dbox(3.15, top+1.55, 2.5, 1.35, "Custom Python\nAWS S3 + Lambda\n(telemetry & AP
 # Col 3 — Snowflake
 col_label(6.05, top-0.32, 3.65, "Snowflake  +  dbt")
 snow = rect(s, 6.05, top, 3.65, 3.55, LIGHT, shape=MSO_SHAPE.ROUNDED_RECTANGLE, line=BLUE, line_w=1.0)
-layers = [("RAW  — source-system schemas", NAVY), ("STAGING — cleaned / conformed", BLUE),
-          ("MARTS — domain, business-ready", BLUE), ("SANDBOX — analyst scratch", GRAY)]
+layers = [("RAW: source-system schemas", NAVY), ("STAGING: cleaned / conformed", BLUE),
+          ("MARTS: domain, business-ready", BLUE), ("SANDBOX: analyst scratch", GRAY)]
 for i,(t,c) in enumerate(layers):
     dbox(6.28, top+0.24 + i*0.72, 3.2, 0.58, t, c, fs=10)
 tb, tf = textbox(s, 6.28, top+3.02, 3.2, 0.4)
@@ -567,10 +596,10 @@ def divider(title, sub):
     rect(d, 0, 0, 0.28, SH.inches, ACCENT)
     place_logo(d, 11.9, 1.0, 0.7)
     tb, tf = textbox(d, 1.1, 2.7, 11.2, 2.4)
-    p = tf.paragraphs[0]; r = p.add_run(); r.text = title
+    p = tf.paragraphs[0]; r = p.add_run(); r.text = tidy(title)
     r.font.size = Pt(38); r.font.bold = True; r.font.color.rgb = WHITE; r.font.name = FONT
     p2 = tf.add_paragraph(); p2.space_before = Pt(10)
-    r2 = p2.add_run(); r2.text = sub
+    r2 = p2.add_run(); r2.text = tidy(sub)
     r2.font.size = Pt(17); r2.font.color.rgb = LAV; r2.font.name = FONT
     return d
 
@@ -586,8 +615,8 @@ def lab(sl, x, y, w, txt, color=BLUE, fs=10):
     r.text = txt.upper(); r.font.size = Pt(fs); r.font.bold = True; r.font.color.rgb = color; r.font.name = FONT
 
 # ============================================================================= PART 2 DIVIDER
-divider("Part 2 — Hands-On Build: RevOps, built & running",
-        "The paved path, made real: RBAC + masking · ADLS ingestion · dbt marts · CI/CD — all live in Snowflake.")
+divider("Part 2: Hands-On Build",
+        "RevOps, built and running. RBAC and masking, ADLS ingestion, dbt marts, and CI/CD, all live in Snowflake.")
 
 # ============================================================================= P2.1 — what's live
 s = content("RevOps onboarded — the four deliverables, live", "Hands-On Build")
@@ -708,9 +737,9 @@ bx(s, 7.95, 3.5, 4.8, 0.95, "Snowflake OG_DEV_DB + OG_PROD_DB\nroles · grants �
 band = rect(s, 0.55, 4.95, 12.2, 1.0, LIGHT, shape=MSO_SHAPE.ROUNDED_RECTANGLE); _noline(band)
 tb, tf = textbox(s, 0.8, 5.05, 11.8, 0.85)
 for i,(k,v) in enumerate([
-    ("DEV", "per-developer sandboxes in OG_DEV_DB — build & iterate freely"),
-    ("QA / preprod", "real STAGING/MARTS in OG_DEV_DB — integration build on merge to dev"),
-    ("PROD", "OG_PROD_DB — build on merge to main; protected environment + approval")]):
+    ("DEV", "per-developer sandboxes in OG_DEV_DB; build and iterate freely"),
+    ("QA / preprod", "real STAGING/MARTS in OG_DEV_DB; integration build on merge to dev"),
+    ("PROD", "OG_PROD_DB; built on merge to main, protected environment + approval")]):
     p = tf.paragraphs[0] if i==0 else tf.add_paragraph(); p.line_spacing=1.05
     r0=p.add_run(); r0.text=f"{k}:  "; r0.font.bold=True; r0.font.size=Pt(11); r0.font.color.rgb=BLUE; r0.font.name=FONT
     r1=p.add_run(); r1.text=v; r1.font.size=Pt(11); r1.font.color.rgb=INK; r1.font.name=FONT
@@ -752,7 +781,7 @@ notes(s, "Land the thesis: platform-as-product, governed by default, self-servic
          "end-to-end. Invite deep-dive questions — the appendix has the internals.")
 
 # ============================================================================= APPENDIX DIVIDER
-divider("Technical Appendix", "Deep dives for the panel's probes — pull these up on demand.")
+divider("Technical Appendix", "Deep dives for the panel's probes. Pull these up on demand.")
 
 # ============================================================================= A1 — RBAC scale / domain-scoped analyst
 s = content("Scaling RBAC to 10 domains — least privilege by construction", "Appendix · Governance")
@@ -828,7 +857,7 @@ code_box(s, 8.0, 1.6, 4.78, 4.55, [
     "-- drift-safe typing in staging",
     "TRY_CAST(payload:properties.duration_ms",
     "         AS INT)  -- bad value -> NULL",
-], title="VARIANT internals — sketch")
+], title="VARIANT internals (sketch)")
 takeaway(s, "Schema-on-read is nearly free at query time — consistent paths are columnarized on write; type once in staging, downstream never parses JSON.")
 footer(s)
 notes(s, "BONUS / HIDDEN — pull up only if the panel digs into VARIANT performance. Key "
