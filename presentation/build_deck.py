@@ -781,7 +781,8 @@ bullets(s, [
     (0, "Governance & security:", ""),
     (1, "Row-access policies", "— tenant / region isolation on shared tables."),
     (1, "OIDC federated CI auth", "— retire long-lived key-pairs; env-specific DEV_* / PROD_* role split for per-env isolation."),
-], 0.7, 1.45, 12.0, 4.85, base=15.5)
+    (1, "Database-per-layer + dedicated SANDBOX", "— RAW / STAGING / MARTS / SANDBOX as separate databases (today: schema-per-layer, one DB per env)."),
+], 0.7, 1.4, 12.0, 4.95, base=15)
 takeaway(s, "The foundation is built; each of these is an additive step on top of it, not a rebuild.")
 footer(s)
 notes(s, "Roadmap, part 1. Snowpipe replaces the scheduled COPY once files land continuously "
