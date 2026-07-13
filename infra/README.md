@@ -1,271 +1,218 @@
-# OpenGov POC — Snowflake RBAC & Security (Task 1)
+# OpenGov Data Platform — Infrastructure (RevOps domain)
 
-Terraform-managed access control for the RevOps domain: two environments
-(`OG_DEV_DB`, `OG_PROD_DB`), two-tier role hierarchy, scoped ingestion
-identities, dbt Mesh (hub + spoke) service roles, and tag-based masking of
-`ACCOUNT.ARR`.
+Config-driven, CI/CD-deployed Snowflake platform: RBAC, governance (PII masking),
+ingestion contract objects, and native-dbt plumbing — all as code, promoted
+through GitHub Actions. Two environments (`OG_DEV_DB`, `OG_PROD_DB`), one account.
 
-## Config-driven RBAC (CSV/Excel → JSON → Terraform)
+> **Paved path:** every operational change (onboard a developer, add a schema,
+> grant a role, add a masking rule…) is a **one-row CSV edit in a PR**. See
+> [`docs/runbooks/`](docs/runbooks) for the step-by-step for each.
 
-No object lists live in HCL. The human interface is `infra/config/*.csv`
-(or one Excel workbook `og_config.xlsx` with matching sheets);
-`sync_config.py` converts them into JSON manifests under
-`infra/resources/infrastructure/`, which Terraform `for_each`es over:
+---
+
+## 1. What's here
 
 ```
-config/environments.csv       active environments (DEV / PROD)
-config/warehouses.csv         warehouses per function (XS default + L)
-config/schemas.csv            schemas + kind (DATA / GOVERNANCE / DBT)
-config/service_users.csv      service identities (TYPE=SERVICE) → role
-config/functional_roles.csv   the 5 roles + hierarchy (inherits_from/granted_to)
-config/functional_grants.csv  role × env × schema-pattern × R/W rules
-config/masking_rules.csv      masking VOCABULARY: tag x data_type x mask expr
-config/pii_columns.csv        column PII classifications (applied by apply_pii_tags.py)
-config/masking_exemptions.csv WHO sees unmasked PII (roles only, never users)
-config/human_users.csv        human users Terraform creates (no passwords)
-config/user_roles.csv         user → functional role assignments
+infra/
+├── config/                 # the human interface — CSVs (source of truth)
+├── sync_config.py          # CSV -> JSON manifests (validates references)
+├── resources/infrastructure/*.json   # generated; what Terraform reads
+├── terraform/              # HCL: for_each over the manifests (no object lists in HCL)
+├── apply_pii_tags.py       # binds tag->masking-policy + classifies PII columns
+├── seed/                   # mock Fivetran RAW tables (stand-in for a real connector)
+├── bootstrap/              # one-time OG_DEPLOYER creation
+└── docs/runbooks/          # operational guides (the paved path)
+```
+
+## 2. Config-driven IaC flow
+
+No object lists live in HCL. You edit a CSV; `sync_config.py` turns it into JSON
+manifests (cross-validating every reference so mistakes fail at *sync* time, not
+`apply` time); Terraform `for_each`es over the JSON.
+
+```mermaid
+flowchart LR
+  csv["config/*.csv<br/>(edit in a PR)"] --> sync["sync_config.py<br/>validate refs"]
+  sync --> json["resources/infrastructure/*.json"]
+  json --> tf["terraform apply<br/>(GitHub Actions)"]
+  tf --> sf[("Snowflake: roles · grants · schemas ·<br/>warehouses · tags · policies · stages")]
+  tf --> pii["apply_pii_tags.py<br/>re-bind tag→policy"]
+  pii --> sf
 ```
 
 ```bash
-python infra/sync_config.py            # regenerate manifests (validates refs)
+python infra/sync_config.py            # regenerate manifests (validates)
 python infra/sync_config.py --dry-run  # preview without writing
 ```
 
-Every RBAC change is a CSV edit in a PR: `is_active=false` soft-deletes on
-the next apply; a new domain, schema, role, or developer sandbox is a row.
-`sync_config.py` cross-validates references (unknown schemas, roles, envs)
-so mistakes fail at sync time, not at `terraform apply` time.
+`is_active=false` soft-deletes a row on the next apply. A new domain, schema,
+role, warehouse, or developer sandbox is a new row.
 
-## Layout
+## 3. Snowflake layout
 
 ```
 OG_<ENV>_DB
-├── SALESFORCE_RAW_FIVETRAN   raw — all privileges to REVOPS_INGESTION_FIVETRAN (owns its DDL)
-├── PRODUCT_EVENTS_RAW_ADLS   raw — write to REVOPS_INGESTION_ADLS (Python/ADLS);
-│                             tables/stage/file format are deployer-owned contract objects
-├── STAGING                   dbt staging models (built by REVOPS_DEVELOPER)
-├── MARTS_REVOPS              dbt RevOps marts (built by REVOPS_DEVELOPER)
-├── GOVERNANCE                masking policy + PII_FINANCIAL tag (no data)
-└── DBT                       native "dbt Projects on Snowflake" objects
-
-Warehouses (two sizes per pipeline function; XSMALL is the default, LARGE is
-opt-in via USE WAREHOUSE for backfills / full refreshes):
-  OG_<ENV>_INGEST_XS_WH  / OG_<ENV>_INGEST_L_WH
-  OG_<ENV>_TRANSFORM_XS_WH / OG_<ENV>_TRANSFORM_L_WH
-  OG_<ENV>_ANALYTICS_XS_WH
+├── SALESFORCE_RAW_FIVETRAN    RAW — Fivetran-owned DDL (writer_owns_future=true)
+├── PRODUCT_EVENTS_RAW_ADLS    RAW — Python/ADLS loader; contract tables are deployer-owned (DML-only writer)
+├── STAGING                    dbt staging (built by REVOPS_DEVELOPER)
+├── MARTS_REVOPS               dbt RevOps marts (built by REVOPS_DEVELOPER)
+├── GOVERNANCE                 PII_FINANCIAL tag + masking policy (no data)
+├── DBT                        native "dbt Projects on Snowflake" objects
+└── REVOPS_DEV_<NAME>          per-developer sandbox (DEV only)
 ```
 
-RAW schemas are named `<SOURCE>_RAW_<INGESTION_TYPE>` so each loader's
-rights are scoped to exactly its own landing schema.
-The brief's `RAW.SALESFORCE.ACCOUNT` ⇒ `OG_<ENV>_DB.SALESFORCE_RAW_FIVETRAN.ACCOUNT`;
-`RAW.PRODUCT_EVENTS.PAGE_VIEWS` ⇒ `OG_<ENV>_DB.PRODUCT_EVENTS_RAW_ADLS.PAGE_VIEWS`.
-(Owner decision: telemetry files land in **ADLS**, not S3 — the brief's
-boto3 pattern is implemented 1:1 with the Azure Blob SDK instead.)
+RAW schemas are `<SOURCE>_RAW_<INGESTION_TYPE>` so each loader's rights scope to
+exactly its landing schema. The brief's `RAW.SALESFORCE.ACCOUNT` ⇒
+`OG_<ENV>_DB.SALESFORCE_RAW_FIVETRAN.ACCOUNT`; `RAW.PRODUCT_EVENTS.PAGE_VIEWS` ⇒
+`OG_<ENV>_DB.PRODUCT_EVENTS_RAW_ADLS.PAGE_VIEWS`. (Owner decision: telemetry
+lands in **ADLS**, not S3 — the brief's boto3 pattern implemented 1:1 on Azure Blob.)
 
-## ADLS telemetry landing (storage integration + contract objects)
+**Warehouses** are per role for cost attribution, named `OG_<ENV>_<ROLE>_WH`:
+`READER` (XS), `ANALYST` (M), `DEVELOPER` (M), `ADMIN` (XS), `INGEST_ADLS` (XS),
+`INGEST_FIVETRAN` (XS). See [warehouses runbook](docs/runbooks/warehouses.md).
 
-Files land in a new `og-telemetry` container in the existing `snowopssa`
-storage account, env-prefixed:
-`azure://snowopssa.blob.core.windows.net/og-telemetry/<env>/product_events/page_views/dt=YYYY-MM-DD/hr=HH/...`
+## 4. RBAC — two tiers
 
-Terraform (as OG_DEPLOYER) deploys the full ingestion contract:
-- `OG_ADLS_INT` — account-level **storage integration** (config/storage_integrations.csv)
-- `PAGE_VIEWS_STAGE` — external stage per env over the env's path prefix (config/stages.csv)
-- `FF_JSON` — JSON file format, `strip_outer_array` (config/file_formats.csv)
-- `PAGE_VIEWS`, `PAGE_VIEWS_QUARANTINE`, `PAGE_VIEWS_LOAD_LOG` — stable-DDL raw
-  tables (promoted keys + `payload VARIANT`), config-driven SnowOps-style:
-  manifest in `config/tables.csv`, column definitions in
-  `resources/tables/<key>.json`, deployed per env by Terraform via CI/CD.
-  **Custom-ingestion schemas only** — Fivetran-owned schemas never appear in
-  tables.csv (the connector manages that DDL; sync_config.py enforces this).
-  Adding a raw table for a new event type = one CSV row + one JSON file in a PR.
+> Functional roles are **account-wide**, not per-env: an identity holds one role
+> that applies to `OG_DEV_DB` *and* `OG_PROD_DB`. The environment dimension lives
+> only in the **access-role tier** (`AR_<ENV>_<SCHEMA>`), composed per env via
+> `functional_grants.csv` `env=ALL` rows. One grant, both databases.
 
-Because the platform owns this DDL, `AR_<ENV>_PRODUCT_EVENTS_RAW_ADLS_W` is
-**DML-only** (`writer_owns_future=false` in schemas.csv): the loader can
-INSERT/COPY but can never ALTER or DROP the contract. Contrast with the
-Fivetran schema (`writer_owns_future=true`), where the connector owns its DDL.
+**Tier 1 — access roles** (never granted to users; the only env-scoped layer):
+`AR_<ENV>_<SCHEMA>_R` (usage + select, current & future) and `_W` (write + DML;
+`writer_owns_future` controls whether the writer also owns future DDL).
 
-One-time Azure setup (after the first `terraform apply`):
-```bash
-az storage container create --name og-telemetry --account-name snowopssa
-```
-```sql
-DESC STORAGE INTEGRATION OG_ADLS_INT;
--- open AZURE_CONSENT_URL in a browser, grant consent, then in the Azure
--- portal give the Snowflake service principal (AZURE_MULTI_TENANT_APP_NAME)
--- "Storage Blob Data Contributor" on the og-telemetry container.
-```
+**Tier 2 — functional roles** (account-wide; humans/services hold these):
 
-## Role model (Snowflake-recommended two tiers)
-
-> **Functional roles and their assignments are NOT env/DB-centric.** There is
-> ONE account-wide set of functional roles — a person or service holds a role,
-> not a per-env copy of it. **The same role applies to both `OG_DEV_DB` and
-> `OG_PROD_DB`** (e.g. `REVOPS_READER` reads the layers in DEV *and* PROD; the
-> dbt `REVOPS_DEVELOPER` builds in DEV *and* PROD). The environment dimension
-> lives entirely in the **access-role tier** (`AR_<ENV>_<SCHEMA>`), which each
-> functional role composes per env via `functional_grants.csv` `env=ALL` rows.
-> You never assign a separate DEV role and PROD role to the same identity —
-> one grant, both databases.
-
-**Tier 1 — access roles** (never granted to users; the ONLY env-scoped layer):
-`AR_<ENV>_<SCHEMA>_R` (usage + select, current & future) and
-`AR_<ENV>_<SCHEMA>_W` (all schema privileges + DML + future ownership, so
-writers can ALTER/DROP what they create).
-
-**Tier 2 — functional roles** (account-wide; privileges live here). Six roles:
-
-| Role | Access | Held by |
-|---|---|---|
-| `REVOPS_ANALYST` | read `MARTS_REVOPS` (all envs) | humans |
-| `REVOPS_READER` | read RAW + STAGING + MARTS (all envs) | humans (developers) |
-| `REVOPS_DEVELOPER` | read/write RAW + STAGING + MARTS (all envs), incl PROD | **service only** (dbt CI job) — never humans |
-| `REVOPS_ADMIN` | full domain access; only role that sees unmasked ARR | humans (break-glass) |
-| `REVOPS_INGESTION_ADLS` | write `PRODUCT_EVENTS_RAW_ADLS` | service only (Python loader) |
-| `REVOPS_INGESTION_FIVETRAN` | all privileges on tables + views in `SALESFORCE_RAW_FIVETRAN` | service only (Fivetran) |
+| Role | Reads | Writes | Held by |
+|------|-------|--------|---------|
+| `REVOPS_READER` | all schemas (incl. GOVERNANCE/DBT) | — | humans (via composite `DEV_<NAME>`) |
+| `REVOPS_ANALYST` | `MARTS_*` only | — | analysts |
+| `REVOPS_DEVELOPER` | RAW + STAGING + MARTS | STAGING + MARTS (all envs, incl. PROD) | **service only** (dbt CI) — never humans |
+| `REVOPS_ADMIN` | everything | everything | SYSADMIN (break-glass) |
+| `REVOPS_INGESTION_ADLS` | — | `PRODUCT_EVENTS_RAW_ADLS` (DML only) | ADLS loader svc |
+| `REVOPS_INGESTION_FIVETRAN` | — | `SALESFORCE_RAW_FIVETRAN` (owns DDL) | Fivetran svc |
 
 Hierarchy: `REVOPS_ANALYST → REVOPS_READER → REVOPS_DEVELOPER → REVOPS_ADMIN →
-SYSADMIN`; the two ingestion roles hang off `SYSADMIN` directly (each tier
-declares only its increment; inheritance supplies the rest).
+SYSADMIN`; ingestion roles hang off `SYSADMIN`. `human_assignable=false` marks
+service-only roles; `sync_config.py` **rejects** granting one to a human.
 
-`human_assignable=false` (config/functional_roles.csv) marks the service-only
-roles; `sync_config.py` **rejects** any attempt to grant one to a human
-(user_roles.csv / human_users.default_role). Humans who develop hold
-`REVOPS_READER` + a personal DEV sandbox (`REVOPS_DEV_<NAME>`, write granted
-directly to their user) — read everything, write only their own schema;
-shared + PROD writes happen only through the dbt CI job as `REVOPS_DEVELOPER`.
+### Developers use a composite role (no secondary roles)
 
-**Service users** (`config/service_users.csv`) — `TYPE = SERVICE`, key-pair
-JWT only (passwords impossible). Each holds exactly one functional role:
+Each developer gets a per-person **composite role** `DEV_<NAME>` =
+`REVOPS_READER` (read all) **+** their own sandbox write
+(`AR_DEV_REVOPS_DEV_<NAME>_W`), generated from the DEV `developers` list in
+`environments.csv`. It's their **default role**, and **secondary roles are
+disabled** (`DEFAULT_SECONDARY_ROLES = ()`), so every session reflects exactly
+one role — which keeps `IS_ROLE_IN_SESSION` masking checks unambiguous.
 
-| User | Holds | Purpose |
-|---|---|---|
-| `OG_DBT_SVC` | `REVOPS_DEVELOPER` | dbt model builds, DEV **and** PROD |
-| `OG_INGEST_ADLS_SVC` | `REVOPS_INGESTION_ADLS` | Python telemetry loader |
-| `OG_FIVETRAN_SVC` | `REVOPS_INGESTION_FIVETRAN` | Fivetran connector |
-
-## ARR masking (tag-based)
-
-`GOVERNANCE.MASK_PII_FINANCIAL_NUMBER` returns the real value only when
-`IS_ROLE_IN_SESSION('REVOPS_ADMIN')` (hierarchy-aware — survives role
-inheritance and secondary roles); **everyone else, including `REVOPS_DEVELOPER`
-and the dbt job, gets NULL** — exactly the brief. Because dbt is not exempt,
-`ARR` is deliberately **kept out of staging/marts models** so nothing ever
-persists a masked NULL; the real value lives only in RAW, visible only to
-`REVOPS_ADMIN`. The policy attaches to the `GOVERNANCE.PII_FINANCIAL` **tag**
-(config `masking_rules.csv`), and the tag is set on `ACCOUNT.ARR` by
-`apply_pii_tags.py` from `pii_columns.csv` — classifying a column IS protecting
-it, across all future domains, with zero per-table policy wiring.
-
-## PII masking — fully config-driven & extensible
-
-Three CSVs, three questions, zero HCL to add a rule:
-
-- **What masking rules exist** — `config/masking_rules.csv`: one row per
-  `(tag, data_type)` → Terraform generates a tag (deduped across rows) and a
-  masking policy whose non-exempt branch is `mask_expression` (references
-  `VAL`). `NULL`, a partial reveal (`REGEXP_REPLACE(VAL,'^[^@]+','****')`), a
-  hash — anything valid for that data type. Adding `PII_CONTACT` masking
-  VARCHAR emails, or a second data type on an existing tag, is a CSV row.
-  `sync_config.py` rejects a duplicate `(tag, data_type)` (Snowflake allows
-  multiple policies on a tag only if their argument types differ) and any
-  `mask_expression` that doesn't reference `VAL`.
-- **What is classified** — `config/pii_columns.csv` (schema/table/column → tag).
-- **Who sees it unmasked** — `config/masking_exemptions.csv`, per tag (a
-  functional role name). Current PII_FINANCIAL: **REVOPS_ADMIN only**; everyone
-  else (including REVOPS_DEVELOPER and the dbt job) reads the mask. Users are
-  never exempted directly — grant an exempt role via user_roles.csv, so
-  offboarding stays a single role revoke.
-
-> **Deploy-order rule:** the tag→policy binding is NOT a Terraform resource, so
-> a `terraform apply` that refreshes/recreates a governance tag DROPS the
-> binding. **Always run `apply_pii_tags.py` after `terraform apply`** (and in
-> CI, right after the infra step) to restore `ALTER TAG … SET MASKING POLICY` +
-> column classifications. Symptom if skipped: a tagged column returns real
-> values to non-exempt roles.
-
-**Applying it:** Terraform creates the tags + policies. `apply_pii_tags.py`
-does the two things this provider version can't express as resources —
-binds each policy to its tag (`ALTER TAG ... SET MASKING POLICY`) and
-classifies columns (`ALTER TABLE ... SET TAG`) — both idempotent, from the
-same manifests. Run it after apply/seed and after every Fivetran re-sync
-(Fivetran recreating a table would strip column tags; TF state would drift,
-which is why this is a script):
-
-```bash
-python infra/apply_pii_tags.py --env DEV            # bind + classify
-python infra/apply_pii_tags.py --env PROD --dry-run # preview the SQL
+```mermaid
+flowchart TD
+  user(("developer<br/>(human user)")) -->|default role · no secondary| dev["DEV_&lt;NAME&gt; (composite)"]
+  dev --> reader["REVOPS_READER<br/>read every schema"]
+  dev --> wsand["AR_DEV_REVOPS_DEV_&lt;NAME&gt;_W<br/>write OWN sandbox only"]
+  reader -.->|SELECT · financials MASKED| shared[("RAW · STAGING · MARTS")]
+  wsand -->|CREATE/write| sandbox[("REVOPS_DEV_&lt;NAME&gt;")]
 ```
 
-`masking_rules.csv` ships two inactive examples (PII_CONTACT email, PII_PHONE)
-— flip `is_active` to see new tags+policies appear with no code change.
+Humans never hold `REVOPS_DEVELOPER`; production writes happen only through the
+dbt CI service user (`OG_DBT_SVC`). → [onboard-developer runbook](docs/runbooks/onboard-developer.md).
 
-## Deploy
+**Service users** (`service_users.csv`, `TYPE=SERVICE`, key-pair JWT only):
+`OG_DBT_SVC` (`REVOPS_DEVELOPER`, dbt builds DEV+PROD), `OG_INGEST_ADLS_SVC`
+(`REVOPS_INGESTION_ADLS`), `OG_FIVETRAN_SVC` (`REVOPS_INGESTION_FIVETRAN`).
 
-```bash
-# 0. One-time: generate the deployer key pair, paste public key into
-#    infra/bootstrap/bootstrap_deployer.sql, run it as ACCOUNTADMIN.
-openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out og_deployer_rsa_key.p8 -nocrypt
-openssl rsa -in og_deployer_rsa_key.p8 -pubout -out og_deployer_rsa_key.pub
+## 5. Governance — tag-based PII masking
 
-# 1. Secrets — environment only, nothing on disk or in code:
-export TF_VAR_SF_ORGANIZATION_NAME="IVUTLPR"
-export TF_VAR_SF_ACCOUNT_NAME="JZ06632"
-export TF_VAR_SF_USERNAME="OG_DEPLOYER_SVC"
-export TF_VAR_SF_PRIVATE_KEY="$(cat og_deployer_rsa_key.p8)"
+`GOVERNANCE.PII_FINANCIAL` tag → `MASK_PII_FINANCIAL_NUMBER` policy. Columns are
+classified in `pii_columns.csv` (`ACCOUNT.ARR`, `OPPORTUNITY.AMOUNT`). **Exempt
+roles** (`masking_exemptions.csv`) see the real value: `REVOPS_ADMIN`,
+`REVOPS_DEVELOPER`, `REVOPS_ANALYST` — **not** `REVOPS_READER`.
 
-# 2. Provision both environments:
-cd infra/terraform && terraform init && terraform plan && terraform apply
+Effect: **analysts see financials in the mart**; a plain reader (and any
+developer building in their dev sandbox, since `DEV_<NAME>` inherits
+`REVOPS_READER` and is not exempt) sees `NULL` in RAW/STAGING. Classifying a
+column *is* protecting it — no per-table policy wiring, and it scales to every
+future domain through the tag.
 
-# 3. Seed the mock Fivetran tables + wire tag-based masking (per env):
-snow sql -f infra/seed/seed_salesforce_mock.sql -D "env=DEV"
-snow sql -f infra/seed/seed_salesforce_mock.sql -D "env=PROD"
+Masking is fully config-driven & extensible — three CSVs, zero HCL:
+`masking_rules.csv` (what rules exist: `tag × data_type → mask expression`),
+`pii_columns.csv` (what is classified), `masking_exemptions.csv` (who is exempt,
+by role — never by user, so offboarding is one role revoke). Ships inactive
+`PII_CONTACT`/`PII_PHONE` examples. → [masking-rules runbook](docs/runbooks/masking-rules.md).
+
+> ⚠️ **Every `terraform apply` drops the tag→policy binding** (it isn't a TF
+> resource in this provider). `apply_pii_tags.py` re-establishes it and must run
+> after each apply — the CI does this automatically (§7). It treats
+> "object does not exist" as a skip, so un-synced env tables (e.g. a Fivetran
+> table not yet in PROD) don't fail the deploy.
+> ```bash
+> python infra/apply_pii_tags.py --env DEV     # bind tag→policy + classify columns
+> python infra/apply_pii_tags.py --env PROD --dry-run
+> ```
+
+### ADLS telemetry contract objects
+
+Files land in the `og-telemetry` container of the `snowopssa` storage account,
+env-prefixed: `azure://…/og-telemetry/<env>/product_events/page_views/dt=…/hr=…/`.
+Terraform deploys the full contract: `OG_ADLS_INT` (storage integration),
+`PAGE_VIEWS_STAGE` (keyless external stage per env), `FF_JSON` (file format), and
+the `PAGE_VIEWS` / `_QUARANTINE` / `_LOAD_LOG` tables (promoted keys +
+`payload VARIANT`, from `tables.csv` + `resources/tables/<key>.json`). The loader
+schema is **DML-only** (`writer_owns_future=false`) — it can INSERT/COPY but never
+ALTER/DROP the platform-owned contract. One-time: create the container + grant
+the Snowflake service principal `Storage Blob Data Contributor` after
+`DESC STORAGE INTEGRATION OG_ADLS_INT` consent.
+
+## 6. Full data flow (source → dashboard)
+
+```mermaid
+flowchart LR
+  sf1["Salesforce"] -->|Fivetran| raw1[("SALESFORCE_RAW_FIVETRAN")]
+  tel["Product telemetry<br/>(JSON → ADLS)"] -->|ingest_page_views.py<br/>validate · quarantine · load-log| raw2[("PRODUCT_EVENTS_RAW_ADLS")]
+  raw1 --> stg["dbt STAGING<br/>cast · dedup (QUALIFY) · clean"]
+  raw2 --> stg
+  stg --> marts[("MARTS_REVOPS<br/>revops_pipeline")]
+  marts --> bi["BI / dashboards · AI/ML"]
+  gov["GOVERNANCE tag + policy"] -.->|masks financials for non-exempt roles| raw1
+  gov -.-> stg
 ```
 
-## Onboard a new analyst
+## 7. CI/CD
 
-1. Add one row to `config/human_users.csv` (creates the user; initial
-   password/SSO is set out-of-band — no secrets in config):
-   `jane,JANE_DOE,jane.doe@opengov.com,jane.doe@opengov.com,REVOPS_ANALYST,GTM analyst,true`
-2. Add one row to `config/user_roles.csv`:
-   `jane_analyst,JANE_DOE,REVOPS_ANALYST,true`
-3. PR → merge → `python infra/sync_config.py && terraform apply` (CI does this).
-   The functional role already carries warehouse usage and marts read.
-   Never grant `AR_*` access roles or object privileges directly to users —
-   that is the invariant that makes offboarding total.
+```mermaid
+flowchart LR
+  pr["PR to main (infra/** changed)"] --> plan["plan job:<br/>drift check + fmt + validate + plan<br/>→ plan posted as PR comment"]
+  merge["push to main"] --> apply["apply job:<br/>terraform apply → apply_pii_tags (per active env)"]
+  apply --> sf[("Snowflake")]
+```
 
-## Onboard a new developer (e.g. SOURABH_SHINDE) — two CSV edits
+- **State**: remote `azurerm` backend in `snowopssa` (`og-tfstate` container) —
+  CI and local share state.
+- **Auth**: `OG_DEPLOYER_SVC` key-pair (Snowflake) + storage key (backend), all
+  from GitHub secrets — nothing committed. Malicious-PR safe: secrets are only
+  available to the `apply` job on `push: main`, never to PR-triggered `plan`.
+- Workflow: [`.github/workflows/infra.yml`](../.github/workflows/infra.yml).
 
-1. `config/human_users.csv` — creates the Snowflake user:
-   `sourabh,SOURABH_SHINDE,sourabh.shinde@opengov.com,...,REVOPS_DEVELOPER,...,true`
-2. `config/user_roles.csv`:
-   `sourabh_developer,SOURABH_SHINDE,REVOPS_DEVELOPER,true`
+## 8. Deploy manually (if not via CI)
 
-`REVOPS_DEVELOPER` gives read/write on RAW + STAGING + MARTS in both envs. For
-personal dev work, developers point their dbt profile `schema` at a namespaced
-target (e.g. `STAGING_SOURABH`) within the schemas they already can write —
-no separate sandbox schema is provisioned. Verify: `SHOW GRANTS TO USER SOURABH_SHINDE;`
+```bash
+# one-time: generate deployer key, paste public key into bootstrap_deployer.sql,
+# run it as ACCOUNTADMIN. Then:
+export TF_VAR_SF_ORGANIZATION_NAME=IVUTLPR TF_VAR_SF_ACCOUNT_NAME=JZ06632 \
+       TF_VAR_SF_USERNAME=OG_DEPLOYER_SVC TF_VAR_SF_WAREHOUSE=OG_DEPLOYER_WH \
+       TF_VAR_SF_PRIVATE_KEY="$(cat ~/.snowflake/keys/og_deployer_rsa_key.p8)" \
+       ARM_ACCESS_KEY=<snowopssa key>
+python infra/sync_config.py
+cd infra/terraform && terraform init && terraform apply
+python infra/apply_pii_tags.py --env DEV && python infra/apply_pii_tags.py --env PROD
+```
 
-## Offboard someone — full revocation
-
-1. Flip the user's rows in `config/user_roles.csv` to `is_active=false`
-   (sync + apply revokes the roles) — a single-cell change, auditable in git.
-2. Immediately, out-of-band: `ALTER USER JANE_DOE SET DISABLED = TRUE;`
-   (kills live sessions and the login while the PR merges).
-3. Verify: `SHOW GRANTS TO USER JANE_DOE;` must return zero rows.
-4. After the retention window: `DROP USER JANE_DOE;`
-
-Because object grants live only in access roles, and users hold only
-functional roles, revoking the functional role removes **everything** — there
-is no per-object cleanup and nothing to forget.
-
-## Audit: who saw ACCOUNT.ARR, and when?
-
-Enterprise edition `ACCESS_HISTORY` records column-level reads:
+## 9. Audit — who saw `ACCOUNT.ARR`, and when?
 
 ```sql
 SELECT ah.query_start_time, ah.user_name, q.role_name,
-       f.value:objectName::string  AS table_fqn
+       f.value:objectName::string AS table_fqn
 FROM snowflake.account_usage.access_history ah
 JOIN snowflake.account_usage.query_history q USING (query_id),
      LATERAL FLATTEN(ah.base_objects_accessed) f,
@@ -275,12 +222,19 @@ WHERE f.value:objectName::string ILIKE '%SALESFORCE_RAW_FIVETRAN.ACCOUNT'
 ORDER BY ah.query_start_time DESC;
 ```
 
-Pair with `POLICY_REFERENCES` to prove the policy was attached at read time:
-`SELECT * FROM TABLE(og_prod_db.information_schema.policy_references(policy_name => 'OG_PROD_DB.GOVERNANCE.MASK_PII_FINANCIAL_NUMBER'));`
+## 10. Runbooks (paved path)
 
-## How this scales to N domains
+| Task | Guide |
+|------|-------|
+| Onboard / offboard a developer | [onboard-developer.md](docs/runbooks/onboard-developer.md) |
+| Add a schema | [new-schema.md](docs/runbooks/new-schema.md) |
+| Change functional grants | [functional-grants.md](docs/runbooks/functional-grants.md) |
+| Add / change a human user | [human-users.md](docs/runbooks/human-users.md) |
+| Assign a user role | [user-roles.md](docs/runbooks/user-roles.md) |
+| Add a masking rule / classify PII | [masking-rules.md](docs/runbooks/masking-rules.md) |
+| Add a service user | [service-users.md](docs/runbooks/service-users.md) |
+| Add / resize a warehouse | [warehouses.md](docs/runbooks/warehouses.md) |
+| Onboard a whole new domain | [new-domain.md](docs/runbooks/new-domain.md) |
 
-Everything is domain-shaped: a new domain = a `MARTS_<DOMAIN>` schema + its
-functional roles + service users, all generated from the same CSV config and
-module. Masking scales through tags, not policies: classify the column,
-protection follows.
+The full data flow and dbt project live in the
+**[opengov-dbt-hub](https://github.com/akashpahilwan/opengov-dbt-hub)** repo.
