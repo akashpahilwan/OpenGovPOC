@@ -133,8 +133,12 @@ resource "snowflake_user" "human" {
   login_name   = each.value.login_name
   email        = each.value.email
   default_role = each.value.default_role
-  comment      = each.value.comment
-  depends_on   = [snowflake_account_role.functional]
+  # Humans hold ONE primary role (their DEV_<NAME> composite = read-all + own
+  # sandbox write), so secondary roles are turned OFF — a session reflects
+  # exactly one role, which keeps IS_ROLE_IN_SESSION masking checks unambiguous.
+  default_secondary_roles_option = "NONE"
+  comment                        = each.value.comment
+  depends_on                     = [snowflake_account_role.functional]
 }
 
 # ── Human user -> functional role assignments (config/user_roles.csv) ────────
