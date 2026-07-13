@@ -3,9 +3,12 @@
 # All secrets arrive via environment variables (TF_VAR_*) — nothing hardcoded:
 #   TF_VAR_SF_ORGANIZATION_NAME, TF_VAR_SF_ACCOUNT_NAME,
 #   TF_VAR_SF_USERNAME, TF_VAR_SF_PRIVATE_KEY
-# State: local backend — deliberate for this POC (single operator, no team
-# concurrency; secrets never enter state because users carry no passwords).
-# Production would use S3 + DynamoDB locking.
+# State: remote azurerm backend — the state lives in the same ADLS storage
+# account we already use for ingestion (snowopssa), in a dedicated POC container
+# (og-tfstate). This lets GitHub Actions share state with local runs. Auth to
+# the backend is the storage account access key via ARM_ACCESS_KEY (a GitHub
+# secret / local env var), so no credentials are committed. Snowflake secrets
+# still never enter state (users carry no passwords).
 # ============================================================================
 
 terraform {
@@ -15,6 +18,13 @@ terraform {
       source  = "snowflakedb/snowflake"
       version = "~> 2.18"
     }
+  }
+
+  backend "azurerm" {
+    storage_account_name = "snowopssa"
+    container_name       = "og-tfstate"
+    key                  = "opengov-poc/terraform.tfstate"
+    # access_key supplied out-of-band via ARM_ACCESS_KEY (never committed)
   }
 }
 
