@@ -16,6 +16,7 @@ from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
+from pptx.oxml.ns import qn
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 LOGO = os.path.join(HERE, "image.png")   # OpenGov mark
@@ -87,9 +88,18 @@ def textbox(slide, x, y, w, h):
     return tb, tf
 
 def place_logo(slide, cx, cy, size):
-    """Place the OpenGov logo image centered at (cx, cy)."""
-    slide.shapes.add_picture(LOGO, Inches(cx - size/2), Inches(cy - size/2),
-                             Inches(size), Inches(size))
+    """Place the OpenGov logo image centered at (cx, cy), clipped to a circle."""
+    pic = slide.shapes.add_picture(LOGO, Inches(cx - size/2), Inches(cy - size/2),
+                                   Inches(size), Inches(size))
+    # clip the (square) image into a circle via preset ellipse geometry
+    spPr = pic._element.spPr
+    old = spPr.find(qn('a:prstGeom'))
+    if old is not None:
+        spPr.remove(old)
+    geom = spPr.makeelement(qn('a:prstGeom'), {'prst': 'ellipse'})
+    geom.append(geom.makeelement(qn('a:avLst'), {}))
+    spPr.append(geom)
+    return pic
 
 def title_bar(slide, title, kicker=None):
     bar = rect(slide, 0, 0, SW.inches, 1.12, NAVY)
@@ -190,8 +200,8 @@ tb, tf = textbox(s, 1.9, 3.45, 10.8, 2.6)
 p = tf.paragraphs[0]; r = p.add_run(); r.text = "OpenGov Data Platform"
 r.font.size = Pt(46); r.font.bold = True; r.font.color.rgb = WHITE; r.font.name = FONT
 p2 = tf.add_paragraph(); p2.space_before = Pt(6)
-r2 = p2.add_run(); r2.text = "Platform Architecture & Data Foundation"
-r2.font.size = Pt(22); r2.font.color.rgb = LAV; r2.font.name = FONT
+r2 = p2.add_run(); r2.text = "Architecture & Data Foundation  ·  Hands-On Build (RevOps)"
+r2.font.size = Pt(20); r2.font.color.rgb = LAV; r2.font.name = FONT
 p3 = tf.add_paragraph(); p3.space_before = Pt(18)
 r3 = p3.add_run(); r3.text = "Case Study — Viewpoint"
 r3.font.size = Pt(15); r3.font.color.rgb = RGBColor(0xC7,0xD3,0xE0); r3.font.name = FONT
@@ -591,7 +601,7 @@ notes(s, "This is my point of view. The trap everyone is walking into: pointing 
          "OpenGov gets trustworthy AI, not just more AI.")
 
 # ============================================================================= SLIDE 15 — Close
-s = content("Close: one foundation, analytics and AI on top", "Wrap-up")
+s = content("Part 1 recap → into the hands-on build", "Transition")
 bullets(s, [
     (0, "Foundation → pipelines → self-service → trust:", "one governed, IaC-first platform serving every domain."),
     (0, "Buy the commodity, build the differentiator:", "Fivetran for SaaS; custom Python for telemetry & the semantic layer."),
@@ -606,8 +616,247 @@ notes(s, "Recap the four-part arc and restate the thesis. Signal you're ready fo
          "line — the success metric is federated teams shipping trustworthy data & AI "
          "products quickly, safely, and independently.")
 
-# ============================================================================= SLIDE 16 — BONUS (hidden): VARIANT internals
-s = content("Why VARIANT stays fast at scale", "Internals · Bonus")
+# ============================================================================= shared helpers for Part 2 / Appendix
+def divider(title, sub):
+    d = blank(); set_bg(d, NAVY)
+    rect(d, 0, 0, 0.28, SH.inches, ACCENT)
+    place_logo(d, 11.9, 1.0, 0.7)
+    tb, tf = textbox(d, 1.1, 2.7, 11.2, 2.4)
+    p = tf.paragraphs[0]; r = p.add_run(); r.text = title
+    r.font.size = Pt(38); r.font.bold = True; r.font.color.rgb = WHITE; r.font.name = FONT
+    p2 = tf.add_paragraph(); p2.space_before = Pt(10)
+    r2 = p2.add_run(); r2.text = sub
+    r2.font.size = Pt(17); r2.font.color.rgb = LAV; r2.font.name = FONT
+    return d
+
+def bx(sl, x, y, w, h, txt, fill, tc=WHITE, fs=10.5, bold=False, shape=MSO_SHAPE.ROUNDED_RECTANGLE):
+    b = rect(sl, x, y, w, h, fill, shape=shape); text_in(b, txt, size=fs, color=tc, bold=bold); return b
+
+def ar(sl, x, y, w=0.3, h=0.24, d=MSO_SHAPE.RIGHT_ARROW):
+    rect(sl, x, y, w, h, ACCENT, shape=d)
+
+def lab(sl, x, y, w, txt, color=BLUE, fs=10):
+    tb, tf = textbox(sl, x, y, w, 0.3)
+    p = tf.paragraphs[0]; p.alignment = PP_ALIGN.CENTER; r = p.add_run()
+    r.text = txt.upper(); r.font.size = Pt(fs); r.font.bold = True; r.font.color.rgb = color; r.font.name = FONT
+
+# ============================================================================= PART 2 DIVIDER
+divider("Part 2 — Hands-On Build: RevOps, built & running",
+        "The paved path, made real: RBAC + masking · ADLS ingestion · dbt marts · CI/CD — all live in Snowflake.")
+
+# ============================================================================= P2.1 — what's live
+s = content("RevOps onboarded — the four deliverables, live", "Hands-On Build")
+bullets(s, [
+    (0, "RBAC & security:", "6 functional + per-schema access roles, per-developer composite roles, tag-based ARR/amount masking — Terraform, config-driven."),
+    (0, "Ingestion:", "ingest_page_views.py — ADLS → RAW with validate / quarantine / load-log / idempotency / backfill (the intentional null user_id is quarantined)."),
+    (0, "dbt:", "incremental+deduped staging → RevOps pipeline mart; tests, clean_string macro, mesh public model — native dbt on Snowflake."),
+    (0, "CI/CD:", "infra (Terraform, remote state) and dbt both deploy through GitHub Actions to DEV & PROD — nothing applied by hand."),
+    (0, "Two live databases:", "OG_DEV_DB (dev sandboxes + preprod) and OG_PROD_DB — both seeded, governed, and built end-to-end."),
+], 0.7, 1.5, 12.0, 4.6, base=17)
+takeaway(s, "Everything in Part 1's architecture is running in the demo account — provisioned and promoted entirely through code.")
+footer(s)
+notes(s, "Orient the panel: this is the same architecture, now real. Each bullet is a "
+         "deliverable I can open live. Emphasize config-driven + CI-deployed — no click-ops.")
+
+# ============================================================================= P2.2 — RBAC + ingestion-layer access (diagram)
+s = content("RBAC as built — who can touch each layer", "Hands-On Build")
+top = 1.7
+# layer column (objects)
+lab(s, 0.55, top-0.32, 3.1, "Layer / schema")
+layers = [("SALESFORCE_RAW_FIVETRAN", NAVY2), ("PRODUCT_EVENTS_RAW_ADLS", NAVY2),
+          ("STAGING", BLUE), ("MARTS_REVOPS", BLUE), ("MARTS_<domain>", GRAY)]
+for i,(t,c) in enumerate(layers):
+    bx(s, 0.55, top+0.1+i*0.85, 3.1, 0.62, t, c, fs=10)
+# write column
+lab(s, 4.35, top-0.32, 4.3, "Write access")
+writes = ["REVOPS_INGESTION_FIVETRAN  (owns DDL)",
+          "REVOPS_INGESTION_ADLS  (DML only — contract is deployer-owned)",
+          "REVOPS_DEVELOPER  (dbt CI, all envs)",
+          "REVOPS_DEVELOPER  (dbt CI, all envs)",
+          "domain developer role (dbt CI)"]
+for i,t in enumerate(writes):
+    bx(s, 4.35, top+0.1+i*0.85, 4.3, 0.62, t, GREEN, fs=9.5)
+# read column
+lab(s, 9.0, top-0.32, 3.75, "Read access")
+reads = ["REVOPS_READER · ADMIN",
+         "REVOPS_READER · ADMIN",
+         "REVOPS_READER · DEVELOPER · ADMIN",
+         "REVOPS_ANALYST · READER · ADMIN",
+         "domain analyst (that domain's marts only)"]
+for i,t in enumerate(reads):
+    bx(s, 9.0, top+0.1+i*0.85, 3.75, 0.62, t, LIGHT, tc=INK, fs=9.5)
+takeaway(s, "Access roles hold object grants; functional roles compose them; humans hold a composite/functional role — writes to shared+PROD happen only via the dbt CI service role.")
+footer(s)
+notes(s, "Walk each layer: ingestion roles are scoped to exactly their landing schema "
+         "(Fivetran owns its DDL; the ADLS loader is DML-only against a platform-owned "
+         "contract). Shared STAGING/MARTS are written ONLY by REVOPS_DEVELOPER through the "
+         "dbt CI job — no human holds that role. Readers read all; analysts read marts; a "
+         "domain analyst is scoped to that domain's marts (FINANCE_ANALYST in the appendix).")
+
+# ============================================================================= P2.3 — masking as built
+s = content("ARR / amount masking — who sees what", "Hands-On Build")
+bullets(s, [
+    (0, "Tag-based:", "GOVERNANCE.PII_FINANCIAL tag → MASK_PII_FINANCIAL_NUMBER policy; classify ACCOUNT.ARR + OPPORTUNITY.AMOUNT once, protection follows the tag."),
+    (0, "Exempt (see real values):", "REVOPS_ADMIN, REVOPS_DEVELOPER, REVOPS_ANALYST — NOT REVOPS_READER."),
+    (0, "So, in practice:", ""),
+    (1, "Analyst", "— sees amount in the MART (exempt); financials are the point of their job."),
+    (1, "Reader / a developer in their dev sandbox", "— sees NULL in RAW/STAGING (readers aren't exempt)."),
+    (0, "The operational gotcha:", "the tag→policy binding is not a Terraform resource — every apply drops it, so apply_pii_tags.py re-binds it right after apply (automated in CI)."),
+], 0.7, 1.5, 12.0, 4.6, base=16.5)
+takeaway(s, "Classify a column, not a table — masking scales to every domain through tags, and CI re-establishes the binding on every deploy.")
+footer(s)
+notes(s, "Demo-able: query ACCOUNT.ARR as REVOPS_READER (NULL) vs the mart as REVOPS_ANALYST "
+         "(real). Stress the tag→policy re-bind is the one non-declarative step, and CI owns "
+         "it. Audit via ACCESS_HISTORY answers 'who read ARR, when'.")
+
+# ============================================================================= P2.4 — ingestion as built
+s = content("Telemetry ingestion — ADLS → RAW, built to the brief", "Hands-On Build")
+bullets(s, [
+    (0, "Source:", "hourly JSON in ADLS (og-telemetry/<env>/product_events/page_views/dt=/hr=/) — read via a keyless external stage (storage integration, no secrets)."),
+    (0, "Validate & quarantine:", "rows missing event_id / account_id / event_timestamp → PAGE_VIEWS_QUARANTINE; the good rows land in append-only RAW."),
+    (0, "Load log:", "one PAGE_VIEWS_LOAD_LOG row per file — file, records loaded, quarantined, timestamp — an audit trail that outlives COPY history."),
+    (0, "Idempotent + backfillable:", "per-file dedup on re-run; --path/--backfill for a folder or the full set; event_id dedup deferred to dbt staging."),
+    (0, "As run:", "PROD load = 9 rows loaded, 5 quarantined; staging dedup collapsed to 5 unique events."),
+], 0.7, 1.5, 12.0, 4.6, base=16.5)
+takeaway(s, "RAW is immutable truth: validate at the door, quarantine the bad, log every load — and make re-runs safe.")
+footer(s)
+notes(s, "This is the brief's ingestion task, 1:1 — only S3 became ADLS (owner decision, "
+         "boto3 pattern ported to the Azure Blob SDK). The null-user_id record from the "
+         "sample payload is exactly what the quarantine catches. Partial-batch: good rows "
+         "commit, bad rows quarantine, never fail the whole file. Lambda-on-arrival and a "
+         "second event type (config-driven) are the extension answers.")
+
+# ============================================================================= P2.5 — dbt as built
+s = content("dbt — staging → RevOps mart, native on Snowflake", "Hands-On Build")
+bullets(s, [
+    (0, "Staging (incremental, merge):", "typed + snake_case; CDC (_fivetran_synced / _loaded_at); latest-per-PK via QUALIFY; clean_string on stage_name; soft-deletes dropped."),
+    (0, "Mart — mart_revops__pipeline:", "opportunities × accounts + days_to_close, pipeline_stage_bucket, weighted_amount. Public mesh model a spoke consumes."),
+    (0, "Tests & contracts:", "not_null + unique PKs, accepted_values on stage_name, relationships opp→account, sources.yml — all green."),
+    (0, "Three targets:", "dev → your sandbox (schema__model) · preprod → OG_DEV_DB real schemas · prod → OG_PROD_DB (alias naming)."),
+    (0, "Governance travels:", "an apply_column_tags post-hook carries the PII_FINANCIAL tag onto built columns in preprod/prod."),
+], 0.7, 1.5, 12.0, 4.6, base=16.5)
+takeaway(s, "One project, layered + contracted — incremental where volume demands it, mesh-public where consumers depend on it.")
+footer(s)
+notes(s, "Native dbt on Snowflake: the repo runs as a DBT PROJECT object, executed in-account "
+         "as REVOPS_DEVELOPER — the CI runner never builds models. Incremental vs full-refresh "
+         "is the volume decision (appendix). mart_revops__pipeline is the mesh public model.")
+
+# ============================================================================= P2.6 — CI/CD env promotion (diagram)
+s = content("CI/CD — how code becomes DEV, QA & PROD", "Hands-On Build")
+# dbt lane
+lab(s, 0.55, 1.45, 2.2, "dbt (models)", ACCENT, fs=11)
+bx(s, 0.55, 1.8, 2.55, 0.95, "feature/<you>\n→ target dev", NAVY2, fs=10, bold=True)
+ar(s, 3.2, 2.15)
+bx(s, 3.6, 1.8, 3.0, 0.95, "your SANDBOX\nREVOPS_DEV_<NAME>\n(OG_DEV_DB)", GREEN, fs=9.5, bold=True)
+ar(s, 6.7, 2.15)
+bx(s, 7.1, 1.8, 2.6, 0.95, "push dev\n→ target preprod\n(OG_DEV_DB real schemas)", BLUE, fs=9, bold=True)
+ar(s, 9.8, 2.15)
+bx(s, 10.2, 1.8, 2.55, 0.95, "push main\n→ target prod\n(OG_PROD_DB)", NAVY, fs=9.5, bold=True)
+# infra lane
+lab(s, 0.55, 3.15, 2.2, "infra (RBAC/gov)", ACCENT, fs=11)
+bx(s, 0.55, 3.5, 3.0, 0.95, "PR to main\n→ plan + drift check\n(posted as PR comment)", NAVY2, fs=9.5, bold=True)
+ar(s, 3.65, 3.85)
+bx(s, 4.05, 3.5, 3.4, 0.95, "merge main\n→ terraform apply\n+ apply_pii_tags (per env)", BLUE, fs=9.5, bold=True)
+ar(s, 7.55, 3.85)
+bx(s, 7.95, 3.5, 4.8, 0.95, "Snowflake OG_DEV_DB + OG_PROD_DB\nroles · grants · masking · stages", NAVY, fs=9.5, bold=True)
+# env legend
+band = rect(s, 0.55, 4.95, 12.2, 1.0, LIGHT, shape=MSO_SHAPE.ROUNDED_RECTANGLE); _noline(band)
+tb, tf = textbox(s, 0.8, 5.05, 11.8, 0.85)
+for i,(k,v) in enumerate([
+    ("DEV", "per-developer sandboxes in OG_DEV_DB — build & iterate freely"),
+    ("QA / preprod", "real STAGING/MARTS in OG_DEV_DB — integration build on merge to dev"),
+    ("PROD", "OG_PROD_DB — build on merge to main; protected environment + approval")]):
+    p = tf.paragraphs[0] if i==0 else tf.add_paragraph(); p.line_spacing=1.05
+    r0=p.add_run(); r0.text=f"{k}:  "; r0.font.bold=True; r0.font.size=Pt(11); r0.font.color.rgb=BLUE; r0.font.name=FONT
+    r1=p.add_run(); r1.text=v; r1.font.size=Pt(11); r1.font.color.rgb=INK; r1.font.name=FONT
+footer(s)
+notes(s, "The env story: DEV database hosts BOTH the per-developer sandboxes (target dev) and "
+         "the QA/preprod integration schemas (target preprod, built on merge to dev). PROD is "
+         "a separate database, built on merge to main behind a protected GitHub Environment. "
+         "Auth is key-pair from secrets; secrets are only available post-merge, so a malicious "
+         "PR can't reach them. A manual full-refresh workflow handles incremental logic fixes.")
+
+# ============================================================================= P2.7 — developer isolation
+s = content("Developer self-service, safely isolated", "Hands-On Build")
+bullets(s, [
+    (0, "One composite role per developer:", "DEV_<NAME> = REVOPS_READER (read all) + write to only their own sandbox REVOPS_DEV_<NAME>."),
+    (0, "Single active role:", "it's their default role and secondary roles are OFF — every session is exactly one role, so masking checks are unambiguous."),
+    (0, "Two developers never collide:", "separate sandboxes, <schema>__<model> naming; can't touch shared STAGING/MARTS or anything in PROD."),
+    (0, "Local or Snowsight:", "dbt-core locally (username+password, build --target dev) or a Snowsight Workspace on a feature branch."),
+    (0, "Onboard = two CSV rows:", "add to environments.csv developers + human_users.csv → composite role + sandbox generated by Terraform in a PR."),
+], 0.7, 1.5, 12.0, 4.6, base=16.5)
+takeaway(s, "Developers move fast in their own sandbox; the platform guarantees they can't break shared or production data.")
+footer(s)
+notes(s, "This is the 'paved path' for a person. The composite role is the key design: read "
+         "everything, write only your sandbox, one role active — no secondary-role ambiguity. "
+         "Onboarding is a two-line PR (demonstrated live with AKASHPAHILWAN, SOURABH_SHINDE, "
+         "ANUJKUMAR).")
+
+# ============================================================================= FINAL CLOSE
+s = content("Close: one governed foundation, analytics & AI on top", "Wrap-up")
+bullets(s, [
+    (0, "Foundation → pipelines → self-service → trust:", "one IaC-first, governed platform — and it's running, not just drawn."),
+    (0, "Buy the commodity, build the differentiator:", "Fivetran for SaaS; custom Python for telemetry; native dbt for transforms."),
+    (0, "Guardrails as paved paths:", "config-driven RBAC + tag masking, per-developer sandboxes, CI/CD to DEV & PROD."),
+    (0, "Tradeoffs I'll defend:", "buy vs build · incremental vs full-refresh · centralized vs federated (dbt Mesh) · key-pair/OIDC secrets."),
+    (0, "Scales by construction:", "a 10th domain is the same CSV rows + module — roles, masking, and CI all generated."),
+], 0.7, 1.5, 12.0, 4.6, base=17)
+takeaway(s, "The measure of the platform: how fast a federated team ships something trustworthy on top of it — safely, and on their own.")
+footer(s)
+notes(s, "Land the thesis: platform-as-product, governed by default, self-service, running "
+         "end-to-end. Invite deep-dive questions — the appendix has the internals.")
+
+# ============================================================================= APPENDIX DIVIDER
+divider("Technical Appendix", "Deep dives for the panel's probes — pull these up on demand.")
+
+# ============================================================================= A1 — RBAC scale / domain-scoped analyst
+s = content("Scaling RBAC to 10 domains — least privilege by construction", "Appendix · Governance")
+bullets(s, [
+    (0, "Access roles are reusable primitives:", "AR_<ENV>_<SCHEMA>_R/W hold the grants; a new domain = a generated set, never bespoke grant spaghetti."),
+    (0, "Domain-scoped analysts:", "REVOPS_ANALYST reads MARTS_* (all marts); FINANCE_ANALYST reads MARTS_FINANCE ONLY — an exact-schema grant, not the wildcard."),
+    (0, "Proven live:", "FINANCE_ANALYST sees only MARTS_FINANCE and is DENIED MARTS_REVOPS; the RevOps analyst still sees both."),
+    (0, "Service vs human:", "REVOPS_DEVELOPER (write, incl PROD) is service-only — sync_config.py rejects granting it to a human; humans get read + their own sandbox."),
+    (0, "Audit:", "ACCESS_HISTORY answers 'who read ACCOUNT.ARR and when'; POLICY_REFERENCES proves the mask was attached at read time."),
+], 0.7, 1.5, 12.0, 4.6, base=16.5)
+takeaway(s, "Least privilege scales because it's generated from config — each domain analyst is confined to that domain's marts by an exact grant.")
+footer(s)
+notes(s, "Direct answer to 'how does this scale to 10 domains + how do you handle service vs "
+         "human + audit'. The FINANCE_ANALYST demo is the concrete proof of domain-scoped "
+         "least privilege — built and verified live.")
+
+# ============================================================================= A2 — incremental vs full-refresh
+s = content("Incremental vs full-refresh — and fixing incrementals", "Appendix · dbt")
+bullets(s, [
+    (0, "Incremental (merge):", "high-volume/append sources (telemetry, CDC tables) — build only rows since the last watermark; cheap, fast."),
+    (0, "Full-refresh:", "small dimensions, or after a logic change — rebuild from scratch."),
+    (0, "The trap:", "a normal build only merges NEW rows, so a logic fix to an incremental model never re-cleans already-materialized rows."),
+    (0, "The fix, as a button:", "a manual full-refresh workflow — branch (dev→preprod / main→prod) × scope (all | only models changed in the last commit)."),
+    (0, "Real example:", "the page_views user_id VARIANT-null fix needed a full-refresh to purge 2 historical bad rows from PROD."),
+], 0.7, 1.5, 12.0, 4.6, base=16.5)
+takeaway(s, "Pick incremental for volume, full-refresh for correctness — and make the full-refresh a one-click, scoped workflow.")
+footer(s)
+notes(s, "The 'incremental vs full-refresh' probe. The non-obvious operational point: an "
+         "incremental logic fix requires a full-refresh, which is why there's a dedicated "
+         "workflow with all/modified scope. Grounded in a real bug we fixed.")
+
+# ============================================================================= A3 — CI/CD security & idempotency
+s = content("CI/CD security, idempotency & standards", "Appendix · Delivery")
+bullets(s, [
+    (0, "No static secrets:", "key-pair (JWT) for Snowflake, storage key for the TF backend — all GitHub secrets; the private key touches only a temp file in the job."),
+    (0, "Malicious-PR safe:", "secrets are exposed only to post-merge apply jobs; PR-triggered plan never sees them; PROD gated by a protected Environment + approval."),
+    (0, "Remote state:", "Terraform state in an azurerm backend (ADLS), so CI and local share one source of truth — no drift, no local state to lose."),
+    (0, "Idempotent & half-failure safe:", "config→JSON→for_each reruns cleanly; a drift check fails the PR if CSVs and generated JSON disagree; apply_pii_tags skips absent objects."),
+    (0, "Standards enforced:", "sync_config.py validates every reference (unknown role/schema/env) and rejects a service-only role reaching a human — the linter is the reviewer."),
+], 0.7, 1.5, 12.0, 4.6, base=16.5)
+takeaway(s, "The pipeline is the control plane: reviewed, idempotent, secret-safe, and standards-enforcing — provisioning you can trust.")
+footer(s)
+notes(s, "Hits every CI/CD probe: OIDC/key-pair, protecting secrets from fork PRs, "
+         "idempotency + half-failure safety, linting/naming. The drift check + sync_config "
+         "validation are our 'linting'; remote state + post-merge-only secrets are the "
+         "security spine.")
+
+# ============================================================================= SLIDE — BONUS (appendix): VARIANT internals
+s = content("Why VARIANT stays fast at scale", "Appendix · Internals")
 bullets(s, [
     (0, "Not a text blob:", "each micro-partition shreds consistent JSON paths into typed, compressed sub-columns with min/max stats — native-column treatment."),
     (0, "Projection works:", "selecting payload:properties.duration_ms reads only that sub-column off disk — never the whole document."),
@@ -649,10 +898,10 @@ notes(s, "BONUS / HIDDEN — pull up only if the panel digs into VARIANT perform
          "16 MB/value limit is ~4 orders of magnitude above a telemetry event. One-breath "
          "close: 'stable RAW DDL, columnarized paths, type once in incremental staging — "
          "downstream never touches JSON.'")
-s._element.set('show', '0')                                  # hidden in slideshow
+# appendix slide — visible in slideshow
 
 # ============================================================================= SLIDE 17 — BONUS (hidden): S3 layout & hourly loads
-s = content("S3 layout & hourly loads — append-only RAW", "Internals · Bonus")
+s = content("ADLS layout & hourly loads — append-only RAW", "Appendix · Internals")
 bullets(s, [
     (0, "One prefix per source object:", "source/object/dt=YYYY-MM-DD/hr=HH/ — hourly runs list one narrow prefix; backfill = re-point at a date range; lifecycle rules attach per prefix."),
     (0, "Append new files, never replace:", "RAW is an immutable log, not a mirror — 'latest' applies to which files we read this run, not to what we keep."),
@@ -661,16 +910,16 @@ bullets(s, [
     (0, "COPY now, Snowpipe next:", "scheduled Python + COPY keeps validation / quarantine / _LOAD_LOG in code; production evolution: Snowpipe auto-ingest per S3 event, no scheduler."),
 ], 0.65, 1.5, 7.05, 4.7, base=16.5)
 code_box(s, 8.0, 1.6, 4.78, 4.55, [
-    "s3://og-telemetry/",
-    "  product_events/page_views/",
-    "    dt=2026-07-12/hr=14/",
-    "      page_views_1430_part001.json.gz",
-    "    dt=2026-07-12/hr=15/ ...",
+    "azure://snowopssa.blob.core.windows.net/",
+    "  og-telemetry/prod/product_events/",
+    "    page_views/dt=2026-07-12/hr=14/",
+    "      page_views_2026-07-12_14.json",
+    "    .../hr=15/ ...",
     "",
     "-- hourly job: append new files only",
-    "COPY INTO raw.product_events.page_views",
-    "FROM @s3_stage/page_views/dt=2026-07-12/",
-    "FILE_FORMAT = (TYPE = 'JSON');",
+    "COPY INTO product_events_raw_adls.page_views",
+    "FROM @page_views_stage/dt=2026-07-12/",
+    "FILE_FORMAT = ff_json;",
     "-- 64-day file history: re-run = 0 rows",
     "",
     "-- staging: producer resends -> 1 row",
@@ -700,10 +949,10 @@ notes(s, "BONUS / HIDDEN — pull up if asked about bucket layout, hourly cadenc
          "FORCE=TRUE into a fresh table + SWAP. This expiry is exactly why the design has "
          "three layers — COPY history expires, a watermark can miss late files, so event_id "
          "dedup in staging is the backstop that never expires.")
-s._element.set('show', '0')                                  # hidden in slideshow
+# appendix slide — visible in slideshow
 
 # ============================================================================= SLIDE 18 — BONUS (hidden): COPY logs & 64-day horizon
-s = content("COPY INTO — load logs & the 64-day horizon", "Internals · Bonus")
+s = content("COPY INTO — load logs & the 64-day horizon", "Appendix · Internals")
 bullets(s, [
     (0, "COPY returns a per-file result set:", "rows_parsed / rows_loaded / errors per file — the Python job persists it to _LOAD_LOG; ours never expires."),
     (0, "Built-in audit views:", "COPY_HISTORY table function = 14 days, per table; ACCOUNT_USAGE = 365 days, account-wide (~90 min lag)."),
@@ -751,7 +1000,7 @@ notes(s, "BONUS / HIDDEN — pull up for 'can we see what COPY loaded?' or the 6
          "dedup absorb repeats, or rebuild with FORCE=TRUE + SWAP. Close with the "
          "three-layer line: history expires, watermarks miss late files, staging dedup "
          "never expires.")
-s._element.set('show', '0')                                  # hidden in slideshow
+# appendix slide — visible in slideshow
 
 # ----------------------------------------------------------------------------- save
 out = __file__.rsplit("\\", 1)[0] + "\\OpenGov_Data_Platform_CaseStudy.pptx"
