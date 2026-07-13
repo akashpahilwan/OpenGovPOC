@@ -20,10 +20,9 @@
     },
     "revops_developer": {
       "name": "REVOPS_DEVELOPER",
-      "comment": "Read/write RAW + STAGING + MARTS (all envs); SERVICE-ONLY - dbt role incl PROD; inherits READER (read-all) + ANALYST (financial-exempt)",
+      "comment": "Read/write RAW + STAGING + MARTS (all envs); SERVICE-ONLY dbt role incl PROD; inherits READER only (read-all); financial-exempt via masking_exemptions (not analyst inheritance) so it stays READ-ONLY on SANDBOX",
       "inherits_from": [
-        "REVOPS_READER",
-        "REVOPS_ANALYST"
+        "REVOPS_READER"
       ],
       "granted_to": "",
       "warehouse": "DEVELOPER",

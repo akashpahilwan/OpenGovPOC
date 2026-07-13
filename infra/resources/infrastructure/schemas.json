@@ -48,6 +48,13 @@
       "writer_owns_future": true,
       "comment": "Finance domain marts (dbt) - demonstrates domain-scoped analyst access",
       "is_active": true
+    },
+    "sandbox": {
+      "schema": "SANDBOX",
+      "kind": "DATA",
+      "writer_owns_future": true,
+      "comment": "Shared analyst scratch - REVOPS_ANALYST writes; readers/developers read-only; admin full",
+      "is_active": true
     }
   }
 }

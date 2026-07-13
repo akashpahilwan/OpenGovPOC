@@ -14,6 +14,13 @@
       "level": "R",
       "is_active": true
     },
+    "analyst_sandbox": {
+      "role": "REVOPS_ANALYST",
+      "env": "ALL",
+      "schema": "SANDBOX",
+      "level": "W",
+      "is_active": true
+    },
     "reader_all": {
       "role": "REVOPS_READER",
       "env": "ALL",
