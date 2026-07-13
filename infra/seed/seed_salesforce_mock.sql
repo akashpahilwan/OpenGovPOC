@@ -20,7 +20,7 @@
 USE ROLE OG_DEPLOYER;
 USE DATABASE OG_<% env %>_DB;
 USE SCHEMA SALESFORCE_RAW_FIVETRAN;
-USE WAREHOUSE OG_<% env %>_INGEST_XS_WH;
+USE WAREHOUSE OG_<% env %>_INGEST_FIVETRAN_WH;
 
 -- ── Mock Fivetran tables (schema exactly as provided in the brief) ──────────
 
@@ -48,6 +48,14 @@ CREATE OR REPLACE TABLE OPPORTUNITY (
     _fivetran_synced    TIMESTAMP_NTZ  COMMENT 'Fivetran metadata'
 );
 
+-- ── Reclaim ownership before seeding rows ──────────────────────────────────
+-- SALESFORCE_RAW_FIVETRAN has a future-ownership grant to the write access role
+-- (writer_owns_future), so the tables above became owned by that role the moment
+-- they were created — OG_DEPLOYER could no longer INSERT. Reclaim them here, seed
+-- the rows, then hand ownership back at the end.
+GRANT OWNERSHIP ON TABLE ACCOUNT     TO ROLE OG_DEPLOYER COPY CURRENT GRANTS;
+GRANT OWNERSHIP ON TABLE OPPORTUNITY TO ROLE OG_DEPLOYER COPY CURRENT GRANTS;
+
 -- ── Seed data (covers every dbt-test path: soft-deletes, all stage values,
 --    messy stage_name casing/whitespace for the clean_string macro) ──────────
 
@@ -71,17 +79,17 @@ INSERT INTO OPPORTUNITY VALUES
 -- config/pii_columns.csv, applied idempotently by infra/apply_pii_tags.py
 -- (run it after this seed, and after every Fivetran re-sync in production).
 
--- ── Hand the schema to its rightful owner ────────────────────────────────────
--- Future objects in this schema are owned by the Fivetran access role
--- (Terraform future-ownership grant), but these two seeded tables were
--- created by OG_DEPLOYER — transfer them so the grant model stays honest.
-GRANT OWNERSHIP ON TABLE ACCOUNT     TO ROLE AR_<% env %>_SALESFORCE_RAW_FIVETRAN_W COPY CURRENT GRANTS;
-GRANT OWNERSHIP ON TABLE OPPORTUNITY TO ROLE AR_<% env %>_SALESFORCE_RAW_FIVETRAN_W COPY CURRENT GRANTS;
-
--- ── Verification ─────────────────────────────────────────────────────────────
+-- ── Verification (while OG_DEPLOYER still owns the tables) ───────────────────
 -- Masked path  (any role below REVOPS_ADMIN):  arr IS NULL
 --   USE ROLE REVOPS_ANALYST;  SELECT account_name, arr FROM ...MARTS after dbt
 -- Unmasked path:
 --   USE ROLE REVOPS_ADMIN;    SELECT account_name, arr FROM ACCOUNT;
 SELECT 'seeded ' || COUNT(*) || ' accounts into OG_<% env %>_DB.SALESFORCE_RAW_FIVETRAN.ACCOUNT' AS result
 FROM ACCOUNT;
+
+-- ── Hand the schema to its rightful owner ────────────────────────────────────
+-- Future objects in this schema are owned by the Fivetran access role
+-- (Terraform future-ownership grant), but these two seeded tables were
+-- created by OG_DEPLOYER — transfer them so the grant model stays honest.
+GRANT OWNERSHIP ON TABLE ACCOUNT     TO ROLE AR_<% env %>_SALESFORCE_RAW_FIVETRAN_W COPY CURRENT GRANTS;
+GRANT OWNERSHIP ON TABLE OPPORTUNITY TO ROLE AR_<% env %>_SALESFORCE_RAW_FIVETRAN_W COPY CURRENT GRANTS;
