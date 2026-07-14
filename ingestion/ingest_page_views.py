@@ -291,7 +291,11 @@ def main():
         prefixes, mode = [None], f"prefill from {args.prefill}"   # read all, filter by date below
     else:
         lower = now - timedelta(hours=args.lookback_hours)
-        prefixes, mode = date_prefixes(lower, now), f"default (last {args.lookback_hours}h lookback)"
+        # Bound the read to the window's day-folders. For an unusually large
+        # lookback, fall back to one whole-stage read + the date filter below,
+        # rather than enumerating thousands of dt= prefixes.
+        prefixes = date_prefixes(lower, now) if (now - lower).days <= 90 else [None]
+        mode = f"default (last {args.lookback_hours}h lookback)"
 
     force = args.force_insert
     print(f"MODE: {mode}" + (
