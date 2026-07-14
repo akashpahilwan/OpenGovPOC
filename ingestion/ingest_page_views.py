@@ -23,23 +23,29 @@ PER-FILE PIPELINE (one Snowflake transaction per file — atomic):
                 is normal operation, NOT an error: a file with some bad records
                 still commits (partial load + quarantine append).
 
-IDEMPOTENCY (RAW is append-only; dedup is a downstream concern):
-  - File level (here): files already in PAGE_VIEWS_LOAD_LOG are skipped by
-    default, so re-running the same file creates no duplicate rows, while a NEW
-    file dropped into an already-processed dt=/hr= folder is still picked up
-    (new filename). This satisfies "re-run same file => no dupes" WITHOUT
-    mutating RAW.
-  - Row level (event_id): handled in dbt STAGING via
-    QUALIFY ROW_NUMBER() OVER (PARTITION BY event_id ORDER BY _loaded_at DESC) —
-    that is where the deduplicated current view is built, and it also catches
-    the same event_id arriving in a DIFFERENT file (producer resend) that a
-    file-level skip cannot. RAW keeps every landed row as auditable history.
+SCAN MODES (pick one; ALL of them skip files already in PAGE_VIEWS_LOAD_LOG, so
+none create duplicate rows in RAW by default):
+  default             only files whose dt=/hr= falls in the last --lookback-hours
+                      (default 48) — the steady-state hourly run; the lookback is
+                      tunable per source SLA. Reads only the window's day-folders.
+  --prefill DATE      DATE..today — catch stragglers that arrived later than the
+                      window; still skip-aware, so it loads only what's missing.
+  --backfill          ALL files under the env prefix.
+  --path PREFIX       one ADLS sub-prefix (a single day/hour folder).
 
-BACKFILL:
-  --path dt=YYYY-MM-DD/hr=HH   scope to one folder (or any sub-prefix)
-  --backfill                   reprocess files even if already in the load log;
-                               rows simply RE-APPEND to RAW (still append-only) and
-                               dbt staging dedups them on event_id (QUALIFY)
+  --force-insert      cross-cuts ALL four modes: force-append even files already
+                      in the load log. RAW is append-only, so this ADDS duplicate
+                      rows on purpose (a deliberate reprocess); dbt staging then
+                      collapses them on event_id. Without it, every mode is a
+                      no-op for files it has already loaded.
+
+IDEMPOTENCY (RAW is append-only; current-state is a downstream concern):
+  - File level: the PAGE_VIEWS_LOAD_LOG skip means no mode reloads a file it has
+    already loaded (unless --force-insert). No RAW mutation, no duplicates.
+  - Row level (event_id): dbt STAGING runs
+    QUALIFY ROW_NUMBER() OVER (PARTITION BY event_id ORDER BY _loaded_at DESC) —
+    the deduplicated current view, which also catches the same event_id arriving
+    in a DIFFERENT file (a producer resend). RAW keeps every landed row as history.
 
 REUSABILITY:
   The engine is parameterized by EVENTS[<name>] (stage, tables, contract fields).
@@ -54,8 +60,10 @@ ENV (secrets never hardcoded):
 import argparse
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 
 # ── Event configuration — the ONLY thing that differs per event type ────────
@@ -144,6 +152,29 @@ def already_loaded(cur, cfg: EventConfig) -> set:
     return {r[0] for r in cur.fetchall()}
 
 
+_DT_RE = re.compile(r"dt=(\d{4}-\d{2}-\d{2})(?:/hr=(\d{2}))?")
+
+def file_datetime(filename: str):
+    """Parse dt=YYYY-MM-DD[/hr=HH] out of a staged path into an aware UTC datetime
+    (or None if the path isn't partitioned that way). Used to apply the lookback /
+    prefill lower bound with hourly precision."""
+    m = _DT_RE.search(filename)
+    if not m:
+        return None
+    d, h = m.group(1), m.group(2) or "00"
+    return datetime.strptime(f"{d} {h}", "%Y-%m-%d %H").replace(tzinfo=timezone.utc)
+
+def date_prefixes(start_dt, end_dt):
+    """`dt=<date>` sub-prefixes covering [start_dt, end_dt] inclusive (one per day),
+    so the DEFAULT window scan lists only the relevant day-folders, not the whole
+    stage."""
+    out, d = [], start_dt.date()
+    while d <= end_dt.date():
+        out.append(f"dt={d.isoformat()}")
+        d += timedelta(days=1)
+    return out
+
+
 # ── Validation (Python) ─────────────────────────────────────────────────────
 
 def validate(record: dict, cfg: EventConfig):
@@ -229,33 +260,67 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--env", required=True, choices=["DEV", "QA", "PROD"])
     ap.add_argument("--event", default="page_views", choices=list(EVENTS))
-    ap.add_argument("--path", default=None,
-                    help="scope to a sub-prefix, e.g. dt=2026-05-01/hr=09 (backfill a folder)")
+    # ── scope: pick one; default is the trailing lookback window ─────────────
+    ap.add_argument("--lookback-hours", type=int, default=48,
+                    help="DEFAULT mode: only scan files whose dt=/hr= is within the last N "
+                         "hours (default 48). Tune per source's late-arrival SLA.")
+    ap.add_argument("--prefill", metavar="YYYY-MM-DD",
+                    help="scan from this date through today (catch stragglers older than the window).")
     ap.add_argument("--backfill", action="store_true",
-                    help="reprocess files even if already in the load log. With --path, "
-                         "backfills that folder; with NO --path, FULL-SET backfill of every "
-                         "file under the env prefix. Each file is idempotently replaced.")
+                    help="scan ALL files under the env prefix.")
+    ap.add_argument("--path", metavar="dt=YYYY-MM-DD/hr=HH",
+                    help="scan one ADLS sub-prefix (a single day/hour folder).")
+    # ── force flag: cross-cuts every mode ────────────────────────────────────
+    ap.add_argument("--force-insert", action="store_true",
+                    help="force-append even files already in the load log. RAW is append-only, so this "
+                         "creates duplicate rows on purpose (deliberate reprocess); dbt staging dedups "
+                         "on event_id. Without it, every mode skips already-loaded files (no dups).")
     args = ap.parse_args()
 
     cfg = EVENTS[args.event]
-    if args.backfill:
-        scope = args.path if args.path else "ALL files under the env prefix (full-set backfill)"
-        print(f"BACKFILL mode: reprocessing {scope} — files replaced idempotently.")
+    now = datetime.now(timezone.utc)
+
+    # Resolve scan scope -> (stage sub-prefixes to read, lower-bound datetime | None).
+    # Precedence: --path > --backfill > --prefill > default window.
+    if args.path:
+        prefixes, lower, mode = [args.path], None, f"path {args.path}"
+    elif args.backfill:
+        prefixes, lower, mode = [None], None, "backfill (all files under env prefix)"
+    elif args.prefill:
+        lower = datetime.strptime(args.prefill, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        prefixes, mode = [None], f"prefill from {args.prefill}"   # read all, filter by date below
+    else:
+        lower = now - timedelta(hours=args.lookback_hours)
+        prefixes, mode = date_prefixes(lower, now), f"default (last {args.lookback_hours}h lookback)"
+
+    force = args.force_insert
+    print(f"MODE: {mode}" + (
+        "  [--force-insert: forcing re-insert; duplicates land in append-only RAW]"
+        if force else "  [skips files already in _LOAD_LOG; no duplicates]"))
+
     conn = connect(args.env)
     conn.cursor().execute(f"USE SCHEMA OG_{args.env}_DB.{cfg.schema}")
     try:
         cur = conn.cursor()
-        rows = read_staged(cur, cfg, args.path)
-        if not rows:
-            print(f"No files found under {cfg.stage}" + (f"/{args.path}" if args.path else ""))
-            return
+        rows = []
+        for pfx in prefixes:
+            rows += read_staged(cur, cfg, pfx)
 
-        # group records by source file
+        # group by file; for window/prefill, drop files before the lower bound (hour-precise)
         by_file: dict[str, list] = {}
         for payload_str, filename in rows:
+            if lower is not None:
+                fdt = file_datetime(filename)
+                if fdt is not None and fdt < lower:
+                    continue
             by_file.setdefault(filename, []).append(payload_str)
 
-        skip = set() if args.backfill else already_loaded(cur, cfg)
+        if not by_file:
+            print(f"No files in scope for mode: {mode}")
+            return
+
+        # every mode is skip-aware unless --force-insert forces the re-insert
+        skip = set() if force else already_loaded(cur, cfg)
         cur.close()
 
         total_loaded = total_quar = total_files = 0

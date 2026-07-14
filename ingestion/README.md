@@ -27,16 +27,33 @@ move server-side, not through this host.
    file (clean state to retry). Quarantining is normal, not an error: a file with
    some bad rows still commits (partial load + quarantine).
 
-## Idempotency
+## Scan modes & idempotency
 
-- **Per-file** — files already in `PAGE_VIEWS_LOAD_LOG` are **skipped** by
-  default, so re-running a file never duplicates its rows **without mutating RAW**
-  (RAW stays append-only — nothing is deleted). A **new** file dropped into an
-  already-processed `dt=/hr=` folder is still picked up (new filename).
-- **Row-level `event_id` dedup is NOT done here** — RAW keeps every landed row
-  (in-file and cross-file duplicates included, as auditable history). The
-  deduplicated current view is built in **dbt staging** (Task 3) via
-  `QUALIFY ROW_NUMBER() OVER (PARTITION BY event_id ORDER BY _loaded_at DESC)`.
+Pick one scan scope. **Every mode skips files already in `PAGE_VIEWS_LOAD_LOG`, so
+none create duplicate rows** — RAW stays append-only, nothing is deleted:
+
+| Mode | Scans | Use for |
+|------|-------|---------|
+| *default* | files in the last `--lookback-hours` (default **48**) | the steady-state hourly run |
+| `--prefill YYYY-MM-DD` | that date → today | a straggler that arrived after the window |
+| `--backfill` | every file under the env prefix | a full (re)load |
+| `--path dt=…/hr=…` | one day/hour folder | one specific folder |
+
+- **File-level idempotency** — the `_LOAD_LOG` skip means no mode reloads a file it
+  has already loaded, so re-runs never duplicate rows and RAW is never mutated.
+- **`--force-insert`** cross-cuts all four modes: it forces the append **even for
+  already-loaded files**. Because RAW is append-only, that intentionally adds
+  duplicate rows (a deliberate reprocess), which dbt staging then dedups on
+  `event_id`. Reach for it only when you *mean* to re-load.
+- **Row-level `event_id` dedup is NOT done here** — RAW keeps every landed row as
+  auditable history; the deduplicated current view is built in **dbt staging**
+  (Task 3) via `QUALIFY ROW_NUMBER() OVER (PARTITION BY event_id ORDER BY _loaded_at DESC)`,
+  which also catches the same event arriving in a **different** file (a resend).
+
+> **Late-arriving files:** anything within the lookback window is picked up
+> automatically; something older is a `--prefill <date>` (skip-aware, no dups).
+> In production, Snowpipe auto-ingest removes the window entirely by loading each
+> file the moment it arrives.
 
 ## Run
 
@@ -46,16 +63,17 @@ export SF_USERNAME=OG_INGEST_ADLS_SVC          # needs its RSA key attached (ALT
 export SF_PRIVATE_KEY_PATH=/path/to/ingest_key.p8
 # role/warehouse default to REVOPS_INGESTION_ADLS / OG_<ENV>_INGEST_ADLS_WH
 
-python ingest_page_views.py --env DEV                              # incremental (skip loaded files)
-python ingest_page_views.py --env DEV --path dt=2026-05-01/hr=09   # scope to a day/hour folder
-python ingest_page_views.py --env DEV --path dt=2026-05-01/hr=09 --backfill   # reprocess that folder
-python ingest_page_views.py --env DEV --backfill                   # FULL-SET backfill (every file)
+python ingest_page_views.py --env DEV                             # default: last 48h window
+python ingest_page_views.py --env DEV --lookback-hours 6          # tighter window
+python ingest_page_views.py --env DEV --prefill 2026-05-01        # catch stragglers from a date
+python ingest_page_views.py --env DEV --backfill                  # scan every file (skip-aware)
+python ingest_page_views.py --env DEV --path dt=2026-05-01/hr=09  # one folder
+python ingest_page_views.py --env DEV --backfill --force-insert   # deliberately re-load all (dups -> staging dedups)
 ```
 
-`--backfill` bypasses the skip and **re-appends** the files (RAW stays
-append-only — never mutated). Any resulting duplicate rows are collapsed by the
-`event_id` dedup in dbt staging, which also catches the same event arriving in a
-**different** file (a producer resend) that a file-level skip cannot.
+> **Loading the seeded sample data:** the sample files are dated in the past, so
+> the *default* 48h window won't see them — use `--backfill` (or
+> `--prefill <their date>`) for the initial historical load.
 
 Path layout: `og-telemetry/<env>/product_events/page_views/dt=YYYY-MM-DD/hr=HH/`
 (`hr` is 24-hour, `00`–`23`).
