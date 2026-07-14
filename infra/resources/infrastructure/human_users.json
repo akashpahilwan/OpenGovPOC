@@ -23,6 +23,14 @@
       "default_role": "FINANCE_ANALYST",
       "comment": "Finance domain analyst - reads MARTS_FINANCE only",
       "is_active": true
+    },
+    "akash": {
+      "username": "AKASH_PAHILWAN_V2",
+      "login_name": "AKASH_PAHILWAN_V2",
+      "email": "akash.verma@opengov.com",
+      "default_role": "FINANCE_ANALYST",
+      "comment": "Finance domain analyst - reads MARTS_FINANCE only",
+      "is_active": true
     }
   }
 }

@@ -2,3 +2,4 @@ key,username,login_name,email,default_role,comment,is_active
 sourabh,SOURABH_SHINDE,sourabh.shinde@opengov.com,sourabh.shinde@opengov.com,DEV_SOURABH_SHINDE,RevOps developer: composite role DEV_<NAME> (read-all + own sandbox write); no secondary roles,true
 anuj,ANUJKUMAR,anujkumar@opengov.com,anujkumar@opengov.com,DEV_ANUJKUMAR,RevOps developer: composite role DEV_<NAME> (read-all + own sandbox write); no secondary roles,true
 priya,PRIYA_SHARMA,priya.sharma@opengov.com,priya.sharma@opengov.com,FINANCE_ANALYST,Finance domain analyst - reads MARTS_FINANCE only,true
+akash,AKASH_PAHILWAN_V2,AKASH_PAHILWAN_V2,akash.verma@opengov.com,FINANCE_ANALYST,Finance domain analyst - reads MARTS_FINANCE only,true

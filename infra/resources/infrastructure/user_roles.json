@@ -19,6 +19,16 @@
       "username": "PRIYA_SHARMA",
       "role_name": "FINANCE_ANALYST",
       "is_active": true
+    },
+    "akashv2_revops": {
+      "username": "AKASH_PAHILWAN_V2",
+      "role_name": "REVOPS_ANALYST",
+      "is_active": true
+    },
+    "akashv2_finance": {
+      "username": "AKASH_PAHILWAN_V2",
+      "role_name": "FINANCE_ANALYST",
+      "is_active": true
     }
   }
 }
