@@ -10,8 +10,13 @@ module "env" {
   source   = "./modules/og_env"
   for_each = local.env_map
 
-  env          = each.value.env
-  developers   = each.value.developers
+  env        = each.value.env
+  developers = each.value.developers
+  # Spoke-domain sandbox schema names for THIS env (config/sandboxes.csv).
+  domain_sandboxes = [
+    for k, s in local.sandbox_map : "${s.domain}_DEV_${s.developer}"
+    if s.env == each.value.env
+  ]
   schemas      = local.schema_map
   warehouses   = local.warehouse_map
   stages       = local.stage_map
@@ -246,6 +251,43 @@ resource "snowflake_grant_account_role" "dev_composite_user" {
   for_each   = local.sandbox_owner_grants
   role_name  = snowflake_account_role.dev_composite[each.key].name
   user_name  = each.key
+  depends_on = [snowflake_user.human]
+}
+
+# ── Spoke-domain composite roles (DEV_<DOMAIN>_<NAME>) — domain-general ───────
+# The SCALABLE path for every spoke beyond RevOps (finance, revenue, budget,
+# hr...). Driven entirely by config/sandboxes.csv: one row => one composite
+# role that carries the domain's READER role (scoped reads) + write on the
+# developer's own sandbox schema. Adding a new spoke developer is a CSV row,
+# no HCL. Sandboxes are per env (normally DEV); the schema + its AR_..._W
+# access role are created inside the module from domain_sandboxes.
+
+resource "snowflake_account_role" "domain_composite" {
+  for_each = local.sandbox_map
+  name     = "DEV_${each.value.domain}_${each.value.developer}"
+  comment  = "Composite dev role for ${each.value.developer} (${each.value.domain} spoke): ${each.value.reader_role} + own ${each.value.domain}_DEV_${each.value.developer} sandbox write"
+}
+
+# GRANT <reader_role> TO ROLE DEV_<DOMAIN>_<NAME>  (domain-scoped reads only)
+resource "snowflake_grant_account_role" "domain_composite_reader" {
+  for_each         = local.sandbox_map
+  role_name        = each.value.reader_role
+  parent_role_name = snowflake_account_role.domain_composite[each.key].name
+  depends_on       = [snowflake_account_role.functional]
+}
+
+# GRANT AR_<ENV>_<DOMAIN>_DEV_<NAME>_W TO ROLE DEV_<DOMAIN>_<NAME>  (own sandbox)
+resource "snowflake_grant_account_role" "domain_composite_sandbox" {
+  for_each         = local.sandbox_map
+  role_name        = module.env[each.value.env].access_roles_write["${each.value.domain}_DEV_${each.value.developer}"]
+  parent_role_name = snowflake_account_role.domain_composite[each.key].name
+}
+
+# GRANT DEV_<DOMAIN>_<NAME> TO USER <NAME>  (primary login role for the dev)
+resource "snowflake_grant_account_role" "domain_composite_user" {
+  for_each   = local.sandbox_map
+  role_name  = snowflake_account_role.domain_composite[each.key].name
+  user_name  = each.value.developer
   depends_on = [snowflake_user.human]
 }
 

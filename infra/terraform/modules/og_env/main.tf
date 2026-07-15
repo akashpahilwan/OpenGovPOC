@@ -23,10 +23,19 @@ locals {
   db_name = "OG_${var.env}_DB"
 
   # Individual dbt sandboxes — dbt-recommended schema-per-developer dev pattern.
-  sandbox_schemas = {
-    for d in var.developers :
-    "REVOPS_DEV_${upper(d)}" => { comment = "Personal dbt sandbox for ${upper(d)} - write granted directly to that user only (read-all via REVOPS_READER)" }
-  }
+  # RevOps devs come from var.developers (REVOPS_DEV_<NAME>); spoke-domain devs
+  # come from var.domain_sandboxes (already <DOMAIN>_DEV_<NAME>, from
+  # config/sandboxes.csv). Both get R/W access roles via data_schemas below.
+  sandbox_schemas = merge(
+    {
+      for d in var.developers :
+      "REVOPS_DEV_${upper(d)}" => { comment = "Personal dbt sandbox for ${upper(d)} - write via composite DEV_${upper(d)} (read-all via REVOPS_READER)" }
+    },
+    {
+      for s in var.domain_sandboxes :
+      s => { comment = "Personal dbt sandbox ${s} - write via that developer's DEV_<DOMAIN>_<NAME> composite; reads scoped to the domain reader role" }
+    },
+  )
 
   # Config-driven schemas (config/schemas.csv) + generated sandboxes.
   schemas = merge(

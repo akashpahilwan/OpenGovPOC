@@ -6,3 +6,6 @@ developer_l,DEVELOPER,LARGE,60,false,Opt-in LARGE warehouse for the DEVELOPER fu
 admin,ADMIN,XSMALL,60,true,Dedicated wh for REVOPS_ADMIN,true
 ingest_adls,INGEST_ADLS,XSMALL,60,true,Dedicated wh for REVOPS_INGESTION_ADLS (Python/ADLS loader),true
 ingest_fivetran,INGEST_FIVETRAN,XSMALL,60,true,Dedicated wh for REVOPS_INGESTION_FIVETRAN,true
+finance_analyst,FINANCE_ANALYST,MEDIUM,60,true,Dedicated wh for FINANCE_ANALYST (own wh - not the RevOps analyst wh),true
+finance_reader,FINANCE_READER,XSMALL,60,true,Dedicated wh for FINANCE_READER (finance devs read/build in their sandbox on this),true
+finance_developer,FINANCE_DEVELOPER,MEDIUM,60,true,Dedicated wh for FINANCE_DEVELOPER (finance-hub dbt builds),true

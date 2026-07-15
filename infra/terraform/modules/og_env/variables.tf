@@ -43,6 +43,18 @@ variable "developers" {
   EOT
 }
 
+variable "domain_sandboxes" {
+  type        = list(string)
+  default     = []
+  description = <<-EOT
+    Additional per-developer sandbox schema names for SPOKE domains
+    (e.g. FINANCE_DEV_MEERA_IYER), from config/sandboxes.csv filtered to this
+    env. Merged with the RevOps developers sandboxes; each gets R/W access
+    roles like any other sandbox. The composite role that writes it is created
+    in the root stack (DEV_<DOMAIN>_<DEVELOPER>).
+  EOT
+}
+
 variable "schemas" {
   type = map(object({
     kind               = string # DATA (gets R/W access roles) | GOVERNANCE | DBT

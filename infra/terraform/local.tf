@@ -54,4 +54,11 @@ locals {
 
   user_roles    = jsondecode(file("${path.module}/../resources/infrastructure/user_roles.json"))["user_roles"]
   user_role_map = { for k, v in local.user_roles : k => v if v.is_active }
+
+  # Spoke-domain per-developer sandboxes (config/sandboxes.csv). Domain-general:
+  # each active row => a sandbox schema <DOMAIN>_DEV_<DEVELOPER> + a composite
+  # role DEV_<DOMAIN>_<DEVELOPER>. RevOps devs use environments.csv (legacy
+  # developers list); new spokes (finance, revenue, budget, hr) use this file.
+  sandboxes    = jsondecode(file("${path.module}/../resources/infrastructure/sandboxes.json"))["sandboxes"]
+  sandbox_map  = { for k, v in local.sandboxes : k => v if v.is_active }
 }

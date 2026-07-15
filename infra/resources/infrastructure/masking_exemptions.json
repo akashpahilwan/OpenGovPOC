@@ -17,6 +17,18 @@
       "role_type": "FUNCTIONAL",
       "role": "REVOPS_ANALYST",
       "is_active": true
+    },
+    "finance_dev_reads_financial": {
+      "tag": "PII_FINANCIAL",
+      "role_type": "FUNCTIONAL",
+      "role": "FINANCE_DEVELOPER",
+      "is_active": true
+    },
+    "finance_analyst_sees_financial": {
+      "tag": "PII_FINANCIAL",
+      "role_type": "FUNCTIONAL",
+      "role": "FINANCE_ANALYST",
+      "is_active": true
     }
   }
 }

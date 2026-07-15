@@ -23,6 +23,14 @@
       "rsa_public_key": "",
       "comment": "Fivetran connector identity",
       "is_active": true
+    },
+    "finance_dbt": {
+      "name": "OG_FINANCE_DBT_SVC",
+      "role": "FINANCE_DEVELOPER",
+      "warehouse": "FINANCE_DEVELOPER",
+      "rsa_public_key": "",
+      "comment": "Finance-hub dbt CI identity - builds MARTS_FINANCE via FINANCE_DEVELOPER (RSA key attached in Phase 2)",
+      "is_active": true
     }
   }
 }

@@ -65,6 +65,16 @@ Column reference
   user_roles.csv        : key | username | role_name | is_active  (role
                           assignments; username may be a human_users entry or a
                           pre-existing user)
+  sandboxes.csv         : key | env | domain | developer | reader_role
+                          | is_active — domain-general per-developer sandboxes
+                          for SPOKE domains (finance, revenue, budget, hr, ...).
+                          Each active row generates a sandbox schema
+                          <DOMAIN>_DEV_<DEVELOPER> + composite role
+                          DEV_<DOMAIN>_<DEVELOPER> (= reader_role + own sandbox
+                          write), granted to the developer's user. RevOps
+                          developers stay on environments.csv's developers list
+                          (the original DEV_<NAME> mechanism); new spokes use
+                          this file so adding one is pure config.
 
 Usage:
   python infra/sync_config.py            # auto-detect CSV or Excel
@@ -353,6 +363,26 @@ def parse_user_roles(rows):
     return result
 
 
+def parse_sandboxes(rows):
+    """Domain-general per-developer sandboxes for spoke domains. Each row ->
+    a sandbox schema <DOMAIN>_DEV_<DEVELOPER> + a composite role
+    DEV_<DOMAIN>_<DEVELOPER> (reader_role + own sandbox write). RevOps devs
+    stay on environments.csv developers; this scales to new spokes as config."""
+    result = {}
+    for row in rows:
+        env = row["env"].strip().upper()
+        if env not in VALID_ENVS:
+            sys.exit(f"sandboxes: invalid env '{env}' (must be one of {sorted(VALID_ENVS)})")
+        result[row["key"].strip()] = {
+            "env": env,
+            "domain": row["domain"].strip().upper(),
+            "developer": row["developer"].strip().upper(),
+            "reader_role": row["reader_role"].strip().upper(),
+            "is_active": _bool(row["is_active"]),
+        }
+    return result
+
+
 PARSERS = {
     "environments": ("environments.csv", "Environments", parse_environments),
     "warehouses": ("warehouses.csv", "Warehouses", parse_warehouses),
@@ -370,6 +400,7 @@ PARSERS = {
     "masking_exemptions": ("masking_exemptions.csv", "MaskingExemptions", parse_masking_exemptions),
     "human_users": ("human_users.csv", "HumanUsers", parse_human_users),
     "user_roles": ("user_roles.csv", "UserRoles", parse_user_roles),
+    "sandboxes": ("sandboxes.csv", "Sandboxes", parse_sandboxes),
 }
 
 
@@ -537,14 +568,30 @@ def validate(manifests):
     # SERVICE-ONLY roles (human_assignable=false) must never reach a human.
     human_ok = {v["name"] for v in manifests["functional_roles"].values()
                 if v["is_active"] and v.get("human_assignable", True)}
-    # Per-developer composite roles DEV_<NAME> are generated in main.tf (not
-    # functional_roles.csv) from each active env's developers list. They read
-    # everything (inherit REVOPS_READER) + write only their own sandbox, so they
-    # are valid human default_roles even though they aren't functional roles.
+    # Spoke-domain sandboxes: reader_role must be an active functional role and
+    # the env must be active. These generate a schema + composite role in TF.
+    for k, sb in manifests["sandboxes"].items():
+        if not sb["is_active"]:
+            continue
+        if not sb["domain"] or not sb["developer"]:
+            sys.exit(f"sandboxes[{k}]: domain and developer are required")
+        if sb["reader_role"] not in func_names:
+            sys.exit(f"sandboxes[{k}]: unknown reader_role '{sb['reader_role']}'")
+        if sb["env"] not in active_envs:
+            sys.exit(f"sandboxes[{k}]: env '{sb['env']}' is not an active environment")
+
+    # Per-developer composite roles are generated in main.tf (not
+    # functional_roles.csv) and are valid human default_roles even though they
+    # aren't functional roles:
+    #   • RevOps devs  -> DEV_<NAME>            (environments.csv developers list)
+    #   • Spoke devs   -> DEV_<DOMAIN>_<NAME>   (sandboxes.csv, domain-general)
     composite_roles = {
         f"DEV_{dev}"
         for e in manifests["environments"].values() if e["is_active"]
         for dev in e["developers"]
+    } | {
+        f"DEV_{sb['domain']}_{sb['developer']}"
+        for sb in manifests["sandboxes"].values() if sb["is_active"]
     }
     default_role_ok = func_names | composite_roles
     human_assignable_ok = human_ok | composite_roles

@@ -63,8 +63,28 @@
       "comment": "Finance domain analyst - reads MARTS_FINANCE ONLY (not generic MARTS_*); demonstrates domain-scoped least privilege",
       "inherits_from": [],
       "granted_to": "SYSADMIN",
-      "warehouse": "ANALYST",
+      "warehouse": "FINANCE_ANALYST",
       "human_assignable": true,
+      "is_active": true
+    },
+    "finance_reader": {
+      "name": "FINANCE_READER",
+      "comment": "Finance domain reader - reads MARTS_REVOPS (upstream source) + MARTS_FINANCE; does NOT inherit any RevOps role so finance devs stay blind to RAW/STAGING/RevOps sandboxes (domain isolation)",
+      "inherits_from": [],
+      "granted_to": "SYSADMIN",
+      "warehouse": "FINANCE_READER",
+      "human_assignable": true,
+      "is_active": true
+    },
+    "finance_developer": {
+      "name": "FINANCE_DEVELOPER",
+      "comment": "Finance domain developer - inherits FINANCE_READER (read MARTS_REVOPS+MARTS_FINANCE) + writes MARTS_FINANCE; SERVICE-ONLY (finance-hub dbt CI incl PROD); financial-exempt via masking_exemptions",
+      "inherits_from": [
+        "FINANCE_READER"
+      ],
+      "granted_to": "SYSADMIN",
+      "warehouse": "FINANCE_DEVELOPER",
+      "human_assignable": false,
       "is_active": true
     }
   }

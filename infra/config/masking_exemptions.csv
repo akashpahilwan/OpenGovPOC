@@ -2,3 +2,5 @@ key,tag,role_type,role,is_active
 admin_sees_arr,PII_FINANCIAL,FUNCTIONAL,REVOPS_ADMIN,true
 dbt_etl_reads_financial,PII_FINANCIAL,FUNCTIONAL,REVOPS_DEVELOPER,true
 analyst_sees_mart_financials,PII_FINANCIAL,FUNCTIONAL,REVOPS_ANALYST,true
+finance_dev_reads_financial,PII_FINANCIAL,FUNCTIONAL,FINANCE_DEVELOPER,true
+finance_analyst_sees_financial,PII_FINANCIAL,FUNCTIONAL,FINANCE_ANALYST,true

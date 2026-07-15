@@ -14,6 +14,27 @@
       "level": "R",
       "is_active": true
     },
+    "finance_reader_revops": {
+      "role": "FINANCE_READER",
+      "env": "ALL",
+      "schema": "MARTS_REVOPS",
+      "level": "R",
+      "is_active": true
+    },
+    "finance_reader_finance": {
+      "role": "FINANCE_READER",
+      "env": "ALL",
+      "schema": "MARTS_FINANCE",
+      "level": "R",
+      "is_active": true
+    },
+    "finance_developer_marts": {
+      "role": "FINANCE_DEVELOPER",
+      "env": "ALL",
+      "schema": "MARTS_FINANCE",
+      "level": "W",
+      "is_active": true
+    },
     "analyst_sandbox": {
       "role": "REVOPS_ANALYST",
       "env": "ALL",

@@ -1,0 +1,11 @@
+{
+  "sandboxes": {
+    "meera_finance": {
+      "env": "DEV",
+      "domain": "FINANCE",
+      "developer": "MEERA_IYER",
+      "reader_role": "FINANCE_READER",
+      "is_active": true
+    }
+  }
+}

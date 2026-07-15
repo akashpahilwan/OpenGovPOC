@@ -55,6 +55,30 @@
       "is_default": true,
       "comment": "Dedicated wh for REVOPS_INGESTION_FIVETRAN",
       "is_active": true
+    },
+    "finance_analyst": {
+      "function": "FINANCE_ANALYST",
+      "size": "MEDIUM",
+      "auto_suspend": 60,
+      "is_default": true,
+      "comment": "Dedicated wh for FINANCE_ANALYST (own wh - not the RevOps analyst wh)",
+      "is_active": true
+    },
+    "finance_reader": {
+      "function": "FINANCE_READER",
+      "size": "XSMALL",
+      "auto_suspend": 60,
+      "is_default": true,
+      "comment": "Dedicated wh for FINANCE_READER (finance devs read/build in their sandbox on this)",
+      "is_active": true
+    },
+    "finance_developer": {
+      "function": "FINANCE_DEVELOPER",
+      "size": "MEDIUM",
+      "auto_suspend": 60,
+      "is_default": true,
+      "comment": "Dedicated wh for FINANCE_DEVELOPER (finance-hub dbt builds)",
+      "is_active": true
     }
   }
 }

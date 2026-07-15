@@ -5,4 +5,6 @@ revops_developer,REVOPS_DEVELOPER,Read/write RAW + STAGING + MARTS (all envs); S
 revops_admin,REVOPS_ADMIN,Full domain access; only role that sees unmasked ARR,REVOPS_DEVELOPER,SYSADMIN,ADMIN,true,true
 revops_ingestion_adls,REVOPS_INGESTION_ADLS,Write RAW telemetry (PRODUCT_EVENTS_RAW_ADLS) - Python/ADLS loader; service-only,,SYSADMIN,INGEST_ADLS,false,true
 revops_ingestion_fivetran,REVOPS_INGESTION_FIVETRAN,All privileges on tables+views in RAW Salesforce (SALESFORCE_RAW_FIVETRAN) - Fivetran connector; service-only,,SYSADMIN,INGEST_FIVETRAN,false,true
-finance_analyst,FINANCE_ANALYST,Finance domain analyst - reads MARTS_FINANCE ONLY (not generic MARTS_*); demonstrates domain-scoped least privilege,,SYSADMIN,ANALYST,true,true
+finance_analyst,FINANCE_ANALYST,Finance domain analyst - reads MARTS_FINANCE ONLY (not generic MARTS_*); demonstrates domain-scoped least privilege,,SYSADMIN,FINANCE_ANALYST,true,true
+finance_reader,FINANCE_READER,Finance domain reader - reads MARTS_REVOPS (upstream source) + MARTS_FINANCE; does NOT inherit any RevOps role so finance devs stay blind to RAW/STAGING/RevOps sandboxes (domain isolation),,SYSADMIN,FINANCE_READER,true,true
+finance_developer,FINANCE_DEVELOPER,Finance domain developer - inherits FINANCE_READER (read MARTS_REVOPS+MARTS_FINANCE) + writes MARTS_FINANCE; SERVICE-ONLY (finance-hub dbt CI incl PROD); financial-exempt via masking_exemptions,FINANCE_READER,SYSADMIN,FINANCE_DEVELOPER,false,true

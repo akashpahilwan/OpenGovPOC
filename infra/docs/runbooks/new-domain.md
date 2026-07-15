@@ -1,48 +1,94 @@
-# Runbook: onboard a whole new domain
+# Runbook: onboard a whole new spoke domain
 
-A "domain" (GTM, Finance, Product, HR…) is just a set of the same config rows.
-Everything is domain-shaped, so onboarding one is additive config — no new HCL.
-This is the "paved path" that lets federated teams self-serve.
+A spoke "domain" (Finance, Revenue, Budget, HR…) is the same set of config rows
+every time. Everything is domain-shaped, so onboarding one is **additive config,
+no new HCL** — the paved path for federated self-serve. Finance is the first
+built example; Revenue/Budget/HR are the same recipe.
 
-Example: onboard **Finance** (NetSuite via Fivetran + a finance mart).
+A spoke **consumes upstream PUBLIC marts** (e.g. `MARTS_REVOPS`) and **produces
+its own** `MARTS_<DOMAIN>`. The RBAC boundary — the spoke can read the upstream
+mart but **not** its `RAW`/`STAGING` or dev sandboxes — is what enforces the
+Mesh contract (no cross-project `ref()` needed; the spoke's dbt project reads
+the upstream schema as a `source()`).
 
 ## 1. Schemas — `config/schemas.csv`
 ```
-netsuite_raw,NETSUITE_RAW_FIVETRAN,DATA,true,NetSuite raw (Fivetran-owned),true
-marts_finance,MARTS_FINANCE,DATA,false,Finance marts (dbt),true
+marts_finance,MARTS_FINANCE,DATA,true,Finance domain marts (dbt),true
 ```
-(RAW + a marts schema; STAGING is shared or per-domain as you prefer.)
+(Just the output marts schema if the spoke reads an existing upstream mart. Add
+a RAW schema only if the domain ingests its own source.)
 
 ## 2. Functional roles — `config/functional_roles.csv`
-Add domain roles mirroring RevOps (analyst/reader/developer/admin + ingestion),
-e.g. `FIN_ANALYST`, `FIN_ADMIN`, `FIN_INGESTION_FIVETRAN` — or reuse a shared
-set if the domain doesn't need isolation.
+Three roles per spoke. **Do NOT inherit any other domain's role** — that's the
+isolation. `granted_to = SYSADMIN`; `developer` inherits `reader`.
+```
+finance_analyst,FINANCE_ANALYST,Reads MARTS_FINANCE only,,SYSADMIN,FINANCE_ANALYST,true,true
+finance_reader,FINANCE_READER,Reads upstream MARTS_REVOPS + MARTS_FINANCE; no cross-domain reads,,SYSADMIN,FINANCE_READER,true,true
+finance_developer,FINANCE_DEVELOPER,Inherits FINANCE_READER + writes MARTS_FINANCE; SERVICE-ONLY (dbt CI),FINANCE_READER,SYSADMIN,FINANCE_DEVELOPER,false,true
+```
 
 ## 3. Grants — `config/functional_grants.csv`
+Reader gets the upstream + own marts; developer only needs the extra WRITE
+(reads come via inheriting the reader):
 ```
-fin_analyst_marts,FIN_ANALYST,ALL,MARTS_FINANCE,R,true
-fin_ingest,FIN_INGESTION_FIVETRAN,ALL,NETSUITE_RAW_FIVETRAN,W,true
+finance_reader_revops,FINANCE_READER,ALL,MARTS_REVOPS,R,true
+finance_reader_finance,FINANCE_READER,ALL,MARTS_FINANCE,R,true
+finance_developer_marts,FINANCE_DEVELOPER,ALL,MARTS_FINANCE,W,true
 ```
 
-## 4. Service users — `config/service_users.csv`
-A Fivetran svc + (if a domain-specific dbt project) a dbt svc.
+## 4. Warehouses — `config/warehouses.csv`
+Dedicated per-role functions so the domain never borrows another's compute
+(cost attribution + isolation):
+```
+finance_analyst,FINANCE_ANALYST,MEDIUM,60,true,...,true
+finance_reader,FINANCE_READER,XSMALL,60,true,...,true
+finance_developer,FINANCE_DEVELOPER,MEDIUM,60,true,...,true
+```
 
-## 5. Masking — `config/masking_rules.csv` + `pii_columns.csv` + `masking_exemptions.csv`
-Classify the domain's PII (e.g. NetSuite financials) with an existing or new
-tag. Finance/HR PII protection is *classification*, not new policy code.
+## 5. Service user — `config/service_users.csv`
+The spoke's dbt-CI identity, holding the developer role:
+```
+finance_dbt,OG_FINANCE_DBT_SVC,FINANCE_DEVELOPER,FINANCE_DEVELOPER,,Finance-hub dbt CI,true
+```
 
-## 6. Warehouses — `config/warehouses.csv`
-Per-role warehouses for the domain (or reuse shared functions).
+## 6. Developers + sandboxes — `config/sandboxes.csv`
+Domain-general per-developer sandboxes. One row = a `<DOMAIN>_DEV_<NAME>` schema
+(with R/W access roles) + a composite login role `DEV_<DOMAIN>_<NAME>` that
+carries the domain `reader_role` + write on that one sandbox — nothing else:
+```
+key,env,domain,developer,reader_role,is_active
+meera_finance,DEV,FINANCE,MEERA_IYER,FINANCE_READER,true
+```
+Add the developer to `config/human_users.csv` too, with
+`default_role = DEV_<DOMAIN>_<NAME>`. (RevOps developers predate this file and
+stay on the `developers` column of `environments.csv`; new spokes use
+`sandboxes.csv`.)
 
-## 7. dbt
-Add the domain's models to the hub project (or a spoke repo consuming the hub as
-a dbt Mesh dependency) under `models/<domain>/`, with its own marts schema.
+## 7. Masking — `config/masking_exemptions.csv`
+Who on the domain sees real financials. The dev/CI role must be exempt to build
+real numbers from the upstream mart; the analyst usually should see the domain's
+own marts unmasked:
+```
+finance_dev_reads_financial,PII_FINANCIAL,FUNCTIONAL,FINANCE_DEVELOPER,true
+finance_analyst_sees_financial,PII_FINANCIAL,FUNCTIONAL,FINANCE_ANALYST,true
+```
+Classification of the domain's own PII (if any) is `masking_rules.csv` +
+`pii_columns.csv` — tags, not new policy code.
+
+## 8. dbt (separate step)
+A spoke repo with its own native `DBT PROJECT`, running as the domain's service
+user, reading the upstream mart via `source()` and writing `MARTS_<DOMAIN>`.
 
 ## Deploy
-One PR with all the rows → CI runs `sync_config` + `terraform apply` +
-`apply_pii_tags`. The new domain's schemas, roles, service accounts, warehouses,
-and masking all come up together.
+```
+python infra/sync_config.py    # validates the whole graph
+```
+→ PR → CI runs `terraform apply` + `apply_pii_tags`. Schemas, roles, service
+user, warehouses, sandboxes, and masking all come up together.
 
 **Why it scales:** roles are account-wide and env-composed via access roles;
-masking scales through tags not policies; every artifact is generated by
-`for_each` over CSV — so domain #10 is the same effort as domain #2.
+sandboxes/composites are generated by `for_each` over `sandboxes.csv`; masking
+scales through tags not policies. Every artifact is `for_each` over a CSV — so
+spoke #10 is the same effort as Finance. Verified for Finance: `FINANCE_DEVELOPER`
+reads `MARTS_REVOPS` (real values) via inherited `FINANCE_READER` but is denied
+on `STAGING`/`RAW`.

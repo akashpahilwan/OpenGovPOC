@@ -31,6 +31,14 @@
       "default_role": "FINANCE_ANALYST",
       "comment": "Finance domain analyst - reads MARTS_FINANCE only",
       "is_active": true
+    },
+    "meera": {
+      "username": "MEERA_IYER",
+      "login_name": "meera.iyer@opengov.com",
+      "email": "meera.iyer@opengov.com",
+      "default_role": "DEV_FINANCE_MEERA_IYER",
+      "comment": "Finance developer: composite DEV_FINANCE_<NAME> (read MARTS_REVOPS via FINANCE_READER + write own FINANCE_DEV_<NAME> sandbox); no secondary roles",
+      "is_active": true
     }
   }
 }
