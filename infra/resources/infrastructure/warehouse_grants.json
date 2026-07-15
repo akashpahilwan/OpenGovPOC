@@ -1,0 +1,14 @@
+{
+  "warehouse_grants": {
+    "admin_ingest_adls": {
+      "role": "REVOPS_ADMIN",
+      "warehouse": "ingest_adls",
+      "is_active": true
+    },
+    "analyst_reader_wh": {
+      "role": "REVOPS_ANALYST",
+      "warehouse": "reader",
+      "is_active": false
+    }
+  }
+}

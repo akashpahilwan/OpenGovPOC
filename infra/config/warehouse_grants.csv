@@ -1,0 +1,3 @@
+key,role,warehouse,is_active
+admin_ingest_adls,REVOPS_ADMIN,ingest_adls,true
+analyst_reader_wh,REVOPS_ANALYST,reader,false

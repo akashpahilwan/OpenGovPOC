@@ -2,6 +2,7 @@ key,function,size,auto_suspend,is_default,comment,is_active
 analyst,ANALYST,MEDIUM,60,true,Dedicated wh for REVOPS_ANALYST (MEDIUM - heavier BI/analytics queries),true
 reader,READER,XSMALL,60,true,Dedicated wh for REVOPS_READER,true
 developer,DEVELOPER,MEDIUM,60,true,Dedicated wh for REVOPS_DEVELOPER (MEDIUM - dbt builds),true
+developer_l,DEVELOPER,LARGE,60,false,Opt-in LARGE warehouse for the DEVELOPER function (heavy dbt full-refresh / backfill); same function as developer so REVOPS_DEVELOPER gets USAGE on both - USE WAREHOUSE to escalate,true
 admin,ADMIN,XSMALL,60,true,Dedicated wh for REVOPS_ADMIN,true
 ingest_adls,INGEST_ADLS,XSMALL,60,true,Dedicated wh for REVOPS_INGESTION_ADLS (Python/ADLS loader),true
 ingest_fivetran,INGEST_FIVETRAN,XSMALL,60,true,Dedicated wh for REVOPS_INGESTION_FIVETRAN,true

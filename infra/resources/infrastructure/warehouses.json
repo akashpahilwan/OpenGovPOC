@@ -24,6 +24,14 @@
       "comment": "Dedicated wh for REVOPS_DEVELOPER (MEDIUM - dbt builds)",
       "is_active": true
     },
+    "developer_l": {
+      "function": "DEVELOPER",
+      "size": "LARGE",
+      "auto_suspend": 60,
+      "is_default": false,
+      "comment": "Opt-in LARGE warehouse for the DEVELOPER function (heavy dbt full-refresh / backfill); same function as developer so REVOPS_DEVELOPER gets USAGE on both - USE WAREHOUSE to escalate",
+      "is_active": true
+    },
     "admin": {
       "function": "ADMIN",
       "size": "XSMALL",

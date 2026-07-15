@@ -46,6 +46,12 @@ Column reference
                           | warehouse | is_active
   functional_grants.csv : key | role | env (DEV/QA/PROD/ALL)
                           | schema (exact, PREFIX* or *) | level (R/W) | is_active
+  warehouse_grants.csv  : key | role | warehouse (a warehouses.csv key) | is_active
+                          — CROSS-function warehouse USAGE: grant a role USAGE on
+                          a warehouse outside its own function. Same-function
+                          extra warehouses need NO row here — add a warehouses.csv
+                          row sharing the function and every role of that function
+                          gets USAGE automatically.
   masking_rules.csv     : key | tag | allowed_values (pipe) | data_type
                           | mask_expression (ELSE branch; references VAL or NULL)
                           | comment | is_active   — the masking VOCABULARY;
@@ -252,6 +258,20 @@ def parse_functional_grants(rows):
     return result
 
 
+def parse_warehouse_grants(rows):
+    """Cross-function warehouse USAGE grants: role -> a warehouse (by its
+    warehouses.csv key) outside the role's own function. Same-function extra
+    warehouses are handled by the function grouping in the module, not here."""
+    result = {}
+    for row in rows:
+        result[row["key"].strip()] = {
+            "role": row["role"].strip().upper(),
+            "warehouse": row["warehouse"].strip(),  # a warehouses.csv key
+            "is_active": _bool(row["is_active"]),
+        }
+    return result
+
+
 def parse_masking_rules(rows):
     """Defines the masking VOCABULARY: one row = one (tag, data_type) policy.
     A tag may span multiple data types (multiple rows) — each gets its own
@@ -344,6 +364,7 @@ PARSERS = {
     "service_users": ("service_users.csv", "ServiceUsers", parse_service_users),
     "functional_roles": ("functional_roles.csv", "FunctionalRoles", parse_functional_roles),
     "functional_grants": ("functional_grants.csv", "FunctionalGrants", parse_functional_grants),
+    "warehouse_grants": ("warehouse_grants.csv", "WarehouseGrants", parse_warehouse_grants),
     "masking_rules": ("masking_rules.csv", "MaskingRules", parse_masking_rules),
     "pii_columns": ("pii_columns.csv", "PiiColumns", parse_pii_columns),
     "masking_exemptions": ("masking_exemptions.csv", "MaskingExemptions", parse_masking_exemptions),
@@ -465,6 +486,18 @@ def validate(manifests):
         for p in fr["inherits_from"]:
             if p not in func_names:
                 sys.exit(f"functional_roles[{k}]: inherits_from unknown role '{p}'")
+
+    # Cross-function warehouse grants: role must be a known functional role and
+    # the warehouse must be an active warehouses.csv key (the module grants
+    # USAGE on OG_<ENV>_<KEY>_WH per env).
+    wh_keys = {k for k, v in manifests["warehouses"].items() if v["is_active"]}
+    for k, wg in manifests["warehouse_grants"].items():
+        if not wg["is_active"]:
+            continue
+        if wg["role"] not in func_names:
+            sys.exit(f"warehouse_grants[{k}]: unknown functional role '{wg['role']}'")
+        if wg["warehouse"] not in wh_keys:
+            sys.exit(f"warehouse_grants[{k}]: unknown warehouse key '{wg['warehouse']}' (must be an active warehouses.csv key)")
 
     # Masking vocabulary is now data-driven: known tags come from ACTIVE
     # masking_rules rows, not a hardcoded list. Adding a tag = a CSV row.

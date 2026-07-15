@@ -122,6 +122,28 @@ resource "snowflake_grant_privileges_to_account_role" "functional_wh" {
   depends_on = [snowflake_account_role.functional]
 }
 
+# ── Cross-function warehouse usage (config/warehouse_grants.csv) ──────────────
+# Extra USAGE grants for a role on a warehouse OUTSIDE its own function (e.g.
+# an admin using an ingestion warehouse). Same-function extra warehouses need
+# no row here — they flow through functional_wh above. Referenced by warehouse
+# KEY and expanded to OG_<ENV>_<KEY>_WH per active env.
+
+resource "snowflake_grant_privileges_to_account_role" "warehouse_extra" {
+  for_each = merge([
+    for env_key, env_mod in module.env : {
+      for gk, g in local.warehouse_grant_map :
+      "${gk}__${env_key}" => { role = g.role, wh = env_mod.warehouses[g.warehouse] }
+    }
+  ]...)
+  account_role_name = each.value.role
+  privileges        = ["USAGE"]
+  on_account_object {
+    object_type = "WAREHOUSE"
+    object_name = each.value.wh
+  }
+  depends_on = [snowflake_account_role.functional]
+}
+
 # ── Human users (config/human_users.csv) ─────────────────────────────────────
 # Terraform creates the user shell only — NO passwords in config or state;
 # initial authentication is set out-of-band (in real life: SSO/SCIM).
