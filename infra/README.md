@@ -4,6 +4,15 @@ Config-driven, CI/CD-deployed Snowflake platform: RBAC, governance (PII masking)
 ingestion contract objects, and native-dbt plumbing — all as code, promoted
 through GitHub Actions. Two environments (`OG_DEV_DB`, `OG_PROD_DB`), one account.
 
+**Domains (dbt Mesh):** a **RevOps hub** ingests source data and produces the
+shared `MARTS_REVOPS`; **domain spokes** consume it read-only and produce their
+own `MARTS_<DOMAIN>`. **Finance** is the first built spoke (`FINANCE_ANALYST` /
+`FINANCE_READER` / `FINANCE_DEVELOPER` + its own warehouses, sandbox, and dbt-CI
+service user); Revenue / Budget / HR are the same recipe. Each spoke is walled
+off by RBAC — it reads the upstream mart but never the hub's `RAW`/`STAGING` or
+other teams' sandboxes. Standing up a spoke is
+[pure config](docs/runbooks/new-domain.md).
+
 > **Paved path:** every operational change (onboard a developer, add a schema,
 > grant a role, add a masking rule…) is a **one-row CSV edit in a PR**. See
 > [`docs/runbooks/`](docs/runbooks) for the step-by-step for each.
@@ -55,11 +64,13 @@ OG_<ENV>_DB
 ├── SALESFORCE_RAW_FIVETRAN    RAW — Fivetran-owned DDL (writer_owns_future=true)
 ├── PRODUCT_EVENTS_RAW_ADLS    RAW — Python/ADLS loader; contract tables are deployer-owned (DML-only writer)
 ├── STAGING                    dbt staging (built by REVOPS_DEVELOPER)
-├── MARTS_REVOPS               dbt RevOps marts (built by REVOPS_DEVELOPER)
+├── MARTS_REVOPS               dbt RevOps-hub marts (built by REVOPS_DEVELOPER) — the public mart spokes consume
+├── MARTS_FINANCE              dbt Finance-spoke marts (built by FINANCE_DEVELOPER) — reads MARTS_REVOPS
 ├── GOVERNANCE                 PII_FINANCIAL tag + masking policy (no data)
 ├── DBT                        native "dbt Projects on Snowflake" objects
 ├── SANDBOX                    shared analyst scratch (REVOPS_ANALYST writes; readers/developers read-only; admin full)
-└── REVOPS_DEV_<NAME>          per-developer sandbox (DEV only)
+├── REVOPS_DEV_<NAME>          per-developer RevOps sandbox (DEV only)
+└── FINANCE_DEV_<NAME>         per-developer spoke sandbox (DEV only; generated from sandboxes.csv)
 ```
 
 RAW schemas are `<SOURCE>_RAW_<INGESTION_TYPE>` so each loader's rights scope to
@@ -68,9 +79,14 @@ exactly its landing schema. The brief's `RAW.SALESFORCE.ACCOUNT` ⇒
 `OG_<ENV>_DB.PRODUCT_EVENTS_RAW_ADLS.PAGE_VIEWS`. (Owner decision: telemetry
 lands in **ADLS**, not S3 — the brief's boto3 pattern implemented 1:1 on Azure Blob.)
 
-**Warehouses** are per role for cost attribution, named `OG_<ENV>_<ROLE>_WH`:
-`READER` (XS), `ANALYST` (M), `DEVELOPER` (M), `ADMIN` (XS), `INGEST_ADLS` (XS),
-`INGEST_FIVETRAN` (XS). See [warehouses runbook](docs/runbooks/warehouses.md).
+**Warehouses** are per role for cost attribution, named `OG_<ENV>_<KEY>_WH`:
+RevOps `READER` (XS), `ANALYST` (M), `DEVELOPER` (M) + `DEVELOPER_L` (LARGE
+opt-in for backfills), `ADMIN` (XS), `INGEST_ADLS` (XS), `INGEST_FIVETRAN` (XS);
+Finance `FINANCE_ANALYST` (M), `FINANCE_READER` (XS), `FINANCE_DEVELOPER` (M) —
+so a finance identity never borrows RevOps compute. A role gets USAGE on every
+warehouse of its function (a second same-function warehouse is just another
+row); cross-function grants (e.g. admin → an ingestion wh) live in
+`warehouse_grants.csv`. See [warehouses runbook](docs/runbooks/warehouses.md).
 
 ## 4. RBAC — two tiers
 
@@ -93,10 +109,20 @@ lands in **ADLS**, not S3 — the brief's boto3 pattern implemented 1:1 on Azure
 | `REVOPS_ADMIN` | everything | everything | SYSADMIN (break-glass) |
 | `REVOPS_INGESTION_ADLS` | — | `PRODUCT_EVENTS_RAW_ADLS` (DML only) | ADLS loader svc |
 | `REVOPS_INGESTION_FIVETRAN` | — | `SALESFORCE_RAW_FIVETRAN` (owns DDL) | Fivetran svc |
+| `FINANCE_ANALYST` | `MARTS_FINANCE` only | — | finance analysts |
+| `FINANCE_READER` | `MARTS_REVOPS` (upstream) + `MARTS_FINANCE` | — | finance devs (via composite `DEV_FINANCE_<NAME>`) |
+| `FINANCE_DEVELOPER` | `MARTS_REVOPS` + `MARTS_FINANCE` (inherits reader) | `MARTS_FINANCE` (all envs) | **service only** (finance dbt CI) |
 
 Hierarchy: `REVOPS_ANALYST → REVOPS_READER → REVOPS_DEVELOPER → REVOPS_ADMIN →
 SYSADMIN`; ingestion roles hang off `SYSADMIN`. `human_assignable=false` marks
 service-only roles; `sync_config.py` **rejects** granting one to a human.
+
+**Spoke isolation:** the Finance roles form a *separate* tree
+(`FINANCE_READER → FINANCE_DEVELOPER`, hung off `SYSADMIN`) and inherit **no**
+RevOps role. So finance can read the upstream `MARTS_REVOPS` (its `source()`) but
+is denied on the hub's `RAW`/`STAGING` and every `REVOPS_DEV_*` sandbox — the
+Mesh boundary enforced by grants, not convention. Every new spoke repeats this
+shape via [`new-domain.md`](docs/runbooks/new-domain.md).
 
 ### Developers use a composite role (no secondary roles)
 
@@ -128,7 +154,11 @@ dbt CI service user (`OG_DBT_SVC`). → [onboard-developer runbook](docs/runbook
 `GOVERNANCE.PII_FINANCIAL` tag → `MASK_PII_FINANCIAL_NUMBER` policy. Columns are
 classified in `pii_columns.csv` (`ACCOUNT.ARR`, `OPPORTUNITY.AMOUNT`). **Exempt
 roles** (`masking_exemptions.csv`) see the real value: `REVOPS_ADMIN`,
-`REVOPS_DEVELOPER`, `REVOPS_ANALYST` — **not** `REVOPS_READER`.
+`REVOPS_DEVELOPER`, `REVOPS_ANALYST`, and on the Finance spoke
+`FINANCE_DEVELOPER` (must compute real numbers from `MARTS_REVOPS`) +
+`FINANCE_ANALYST` — **not** `REVOPS_READER` or `FINANCE_READER`. The tag is
+account-wide, so it protects `MARTS_FINANCE` and every future spoke's marts with
+no extra wiring.
 
 Effect: **analysts see financials in the mart**; a plain reader (and any
 developer building in their dev sandbox, since `DEV_<NAME>` inherits
@@ -169,15 +199,32 @@ the Snowflake service principal `Storage Blob Data Contributor` after
 
 ```mermaid
 flowchart LR
-  sf1["Salesforce"] -->|Fivetran| raw1[("SALESFORCE_RAW_FIVETRAN")]
-  tel["Product telemetry<br/>(JSON → ADLS)"] -->|ingest_page_views.py<br/>validate · quarantine · load-log| raw2[("PRODUCT_EVENTS_RAW_ADLS")]
-  raw1 --> stg["dbt STAGING<br/>cast · dedup (QUALIFY) · clean"]
-  raw2 --> stg
-  stg --> marts[("MARTS_REVOPS<br/>revops_pipeline")]
+  subgraph hub["RevOps hub (dbt)"]
+    raw1[("SALESFORCE_RAW_FIVETRAN")]
+    raw2[("PRODUCT_EVENTS_RAW_ADLS")]
+    stg["STAGING<br/>cast · dedup (QUALIFY) · clean"]
+    marts[("MARTS_REVOPS<br/>revops_pipeline · public")]
+    raw1 --> stg
+    raw2 --> stg
+    stg --> marts
+  end
+  subgraph spoke["Finance spoke (dbt): reads hub, own marts"]
+    fmarts[("MARTS_FINANCE")]
+  end
+  sf1["Salesforce"] -->|Fivetran| raw1
+  tel["Product telemetry<br/>(JSON → ADLS)"] -->|ingest_page_views.py<br/>validate · quarantine · load-log| raw2
+  marts -->|reads via source · FINANCE_READER| fmarts
+  raw1 -. no finance access .- spoke
   marts --> bi["BI / dashboards · AI/ML"]
+  fmarts --> bi
   gov["GOVERNANCE tag + policy"] -.->|masks financials for non-exempt roles| raw1
   gov -.-> stg
+  gov -.-> marts
 ```
+
+*(Revenue / Budget / HR spokes attach the same way — read `MARTS_REVOPS`, write
+their own `MARTS_<DOMAIN>`. The Finance dbt project itself is the next phase; the
+schema, roles, warehouses, sandbox, and CI service user are already provisioned.)*
 
 ## 7. CI/CD
 
