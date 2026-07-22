@@ -6,7 +6,7 @@
       "stage_type": "EXTERNAL",
       "url": "azure://snowopssa.blob.core.windows.net/og-telemetry/{env}/product_events/page_views/",
       "storage_integration": "OG_ADLS_INT",
-      "comment": "External stage over the env-prefixed page_views path - COPY INTO reads from here",
+      "comment": "External stage over the env-prefixed page_views path - the loader SELECTs records through it (not COPY INTO)",
       "is_active": true
     }
   }
