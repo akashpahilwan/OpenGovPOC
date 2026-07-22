@@ -426,7 +426,7 @@ s = content("Reliable landing in Snowflake", "Pipelines")
 bullets(s, [
     (0, "Partitioned landing zone:", "S3 keys as source/table/ingest_date=… — immutable, append-only, replayable."),
     (0, "File formats:", "JSON → VARIANT for semi-structured; Parquet for large columnar; compressed; bounded file sizes."),
-    (0, "Load path:", "external stage + COPY INTO, or Snowpipe on arrival; capture METADATA$FILENAME for lineage."),
+    (0, "Load path:", "capture METADATA$FILENAME for lineage."),
     (0, "Quality gates at load:", "validate required fields; bad rows → _QUARANTINE table; never fail the whole batch on one row."),
     (0, "Observability:", "a _LOAD_LOG row per file — records processed, quarantined, load timestamp."),
     (0, "Idempotent:", "dedup on natural key so re-loading a file is a no-op."),
@@ -550,10 +550,10 @@ notes(s, "Snowflake's recommended two-tier model: access roles hold object privi
 # ============================================================================= SLIDE 12 — Observability & SLAs
 s = content("Observability — what we built", "Trust & Governance")
 bullets(s, [
-    (0, "Load observability — PAGE_VIEWS_LOAD_LOG:", "one row per ingestion run (file, records loaded, quarantined, timestamp) — an audit trail that outlives COPY's 64-day history."),
+    (0, "Load observability — PAGE_VIEWS_LOAD_LOG:", "one row per ingestion run (file, records loaded, quarantined, timestamp) — a permanent, queryable load audit (unlike COPY's 64-day history, ours never expires)."),
     (0, "Quarantine as a signal:", "bad rows land in PAGE_VIEWS_QUARANTINE, countable per run (PROD: 9 loaded / 5 quarantined) — a reject-rate you can alert on."),
     (0, "Quality as code, gated in CI:", "dbt not_null / unique / accepted_values / relationships run on every preprod & prod build — a red test blocks the deploy."),
-    (0, "Native audit surfaces(SQL):", "COPY_HISTORY (14d) for loads, ACCESS_HISTORY (365d) for 'who read ACCOUNT.ARR, when'."),
+    (0, "Native audit surfaces(SQL):", "QUERY_HISTORY for the loader's INSERTs, ACCESS_HISTORY (365d) for 'who read ACCOUNT.ARR, when'."),
     (0, "Cost attribution:", "per-role warehouses (OG_<ENV>_<ROLE>_WH) + auto-suspend — spend is attributable to reader / analyst / dbt / ingestion, not one shared blob."),
     (0, "Next step:", "dbt source freshness + a monitoring model over _LOAD_LOG turn these into published freshness/quality SLAs."),
 ], 0.7, 1.5, 12.0, 4.7, base=16)
@@ -561,7 +561,7 @@ takeaway(s, "We built the observable primitives — a per-file load log, a quara
 footer(s)
 notes(s, "REWRITTEN to what we actually built, not generic SLA talk. Concrete artifacts: the "
          "PAGE_VIEWS_LOAD_LOG row-per-run + quarantine table give load observability and a "
-         "reject rate; dbt tests gate every CI build; COPY_HISTORY / ACCESS_HISTORY / "
+         "reject rate; dbt tests gate every CI build; QUERY_HISTORY / ACCESS_HISTORY / "
          "POLICY_REFERENCES are the native audit surfaces (ACCESS_HISTORY answers the ARR "
          "probe); per-role warehouses make cost attributable. Full published SLAs (freshness "
          "targets, alerting to Slack/on-call) are the honest next step on top of these.")
@@ -688,9 +688,8 @@ s = content("Telemetry ingestion — ADLS → RAW, built to the brief", "Hands-O
 bullets(s, [
     (0, "Source:", "hourly JSON in ADLS (og-telemetry/<env>/product_events/page_views/dt=/hr=/) — read via a keyless external stage (storage integration, no secrets)."),
     (0, "Validate & quarantine:", "rows missing event_id / account_id / event_timestamp → PAGE_VIEWS_QUARANTINE; the good rows land in append-only RAW."),
-    (0, "Load log:", "one PAGE_VIEWS_LOAD_LOG row per file — file, records loaded, quarantined, timestamp — an audit trail that outlives COPY history."),
+    (0, "Load log:", "one PAGE_VIEWS_LOAD_LOG row per file — file, records loaded, quarantined, timestamp — a permanent load audit (no COPY-history expiry to manage)."),
     (0, "Idempotent + backfillable:", "per-file dedup on re-run; --path/--backfill for a folder or the full set; event_id dedup deferred to dbt staging."),
-    (0, "As run:", "PROD load = 9 rows loaded, 5 quarantined; staging dedup collapsed to 5 unique events."),
 ], 0.7, 1.5, 12.0, 4.6, base=16.5)
 takeaway(s, "RAW is immutable truth: validate at the door, quarantine the bad, log every load — and make re-runs safe.")
 footer(s)
@@ -780,7 +779,6 @@ bullets(s, [
     (1, "Domain spoke repos", "— consume the hub's public mart cross-project (full dbt Mesh)."),
     (0, "Governance & security:", ""),
     (1, "Row-access policies", "— tenant / region isolation on shared tables."),
-    (1, "OIDC federated CI auth", "— retire long-lived key-pairs; env-specific DEV_* / PROD_* role split for per-env isolation."),
     (1, "Database-per-layer + dedicated SANDBOX", "— RAW / STAGING / MARTS / SANDBOX as separate databases (today: schema-per-layer, one DB per env)."),
 ], 0.7, 1.4, 12.0, 4.95, base=15)
 takeaway(s, "The foundation is built; each of these is an additive step on top of it, not a rebuild.")
@@ -918,106 +916,107 @@ notes(s, "BONUS / HIDDEN — pull up only if the panel digs into VARIANT perform
          "downstream never touches JSON.'")
 # appendix slide — visible in slideshow
 
-# ============================================================================= SLIDE 17 — BONUS (hidden): S3 layout & hourly loads
+# ============================================================================= SLIDE 17 — BONUS (appendix): ADLS layout & hourly loads (stage-read → INSERT)
 s = content("ADLS layout & hourly loads — append-only RAW", "Appendix · Internals")
 bullets(s, [
-    (0, "One prefix per source object:", "source/object/dt=YYYY-MM-DD/hr=HH/ — hourly runs list one narrow prefix; backfill = re-point at a date range; lifecycle rules attach per prefix."),
-    (0, "Append new files, never replace:", "RAW is an immutable log, not a mirror — 'latest' applies to which files we read this run, not to what we keep."),
-    (0, "Idempotent in three layers:", "COPY's 64-day file-load history (re-run loads zero) · _LOAD_LOG watermark + trailing-window rescan for late files · event_id dedup in staging."),
-    (0, "Full refresh without mutation:", "COPY FORCE=TRUE into a fresh table, then ALTER TABLE SWAP — rebuild history, never edit it."),
-    (0, "COPY now, Snowpipe next:", "scheduled Python + COPY keeps validation / quarantine / _LOAD_LOG in code; production evolution: Snowpipe auto-ingest per S3 event, no scheduler."),
-], 0.65, 1.5, 7.05, 4.7, base=16.5)
+    (0, "Read the stage, INSERT to RAW:", "SELECT $1 through the keyless external stage → validate each row in Python → append-only INSERT — not COPY INTO, because the per-row branch to _QUARANTINE needs code between read and write."),
+    (0, "One prefix per source object:", "source/object/dt=YYYY-MM-DD/hr=HH/ — the window scan lists only its day-folders and re-scans a trailing 48h for late files; --prefill for older, --backfill for all, --path for one folder."),
+    (0, "Append new files, never replace:", "RAW is an immutable log, not a mirror — 'latest' is which files we read this run, not what we keep."),
+    (0, "Idempotent in two layers:", "file-level — the loader skips any file already in _LOAD_LOG (re-run loads zero); row-level — event_id dedup in dbt staging, which also catches a producer resend in a different file."),
+    (0, "Reprocess & what's next:", "reprocess on purpose with --force-insert (dups collapse in staging); production evolution is Event Grid → Snowpipe auto-ingest per file, no scheduler."),
+], 0.65, 1.5, 7.05, 4.7, base=16)
 code_box(s, 8.0, 1.6, 4.78, 4.55, [
     "azure://snowopssa.blob.core.windows.net/",
     "  og-telemetry/prod/product_events/",
     "    page_views/dt=2026-07-12/hr=14/",
     "      page_views_2026-07-12_14.json",
-    "    .../hr=15/ ...",
     "",
-    "-- hourly job: append new files only",
-    "COPY INTO product_events_raw_adls.page_views",
+    "-- 1) read THROUGH the stage (not COPY)",
+    "SELECT $1, METADATA$FILENAME",
     "FROM @page_views_stage/dt=2026-07-12/",
-    "FILE_FORMAT = ff_json;",
-    "-- 64-day file history: re-run = 0 rows",
+    "  (FILE_FORMAT => 'ff_json');",
+    "-- validate each row in Python, then:",
+    "-- 2) append-only INSERT to RAW",
+    "INSERT INTO ...page_views",
+    "  SELECT ... FROM VALUES (?, ...);",
+    "-- file already in _LOAD_LOG -> skip",
     "",
-    "-- staging: producer resends -> 1 row",
-    "QUALIFY ROW_NUMBER() OVER (",
-    "  PARTITION BY event_id",
-    "  ORDER BY loaded_at DESC) = 1",
-], title="land hourly, append-only")
-takeaway(s, "Copy only the latest files, keep every row — append-only RAW plus three idempotency layers makes any re-run or backfill safe.")
+    "-- staging dedup: resend -> 1 row",
+    "QUALIFY ROW_NUMBER() OVER (PARTITION",
+    "  BY event_id ORDER BY _loaded_at) = 1",
+], title="stage-read → validate → append")
+takeaway(s, "Read only the latest files, keep every row — append-only RAW plus an explicit _LOAD_LOG skip and event_id dedup make any re-run or backfill safe.")
 footer(s)
 notes(s, "BONUS / HIDDEN — pull up if asked about bucket layout, hourly cadence, or 'why not "
-         "Snowpipe'. Hive-style dt=/hr= prefixes sort lexicographically by time, so the "
-         "watermark is just the last processed prefix; re-scan a trailing 24-48h window so "
-         "late-arriving files in an old hour still load (COPY's file history dedups the "
-         "overlap for free). Append-only stance: never 'replace with latest' — RAW keeps "
-         "every loaded row; dedup and current-state are computed in staging (QUALIFY on "
-         "event_id). Snowpipe question: for the case-study deliverable I keep a scheduled "
-         "Python job + COPY, because the assessed logic — schema validation, quarantine, "
-         "_LOAD_LOG summary — lives in that code, and hourly batch on an XS warehouse is "
-         "cheap. In production, with files landing continuously, I'd flip to Snowpipe: S3 "
-         "event notification -> per-file auto-ingest, exactly-once per file, ~1-minute "
-         "latency, no scheduler or watermark logic at all; validation then moves to a "
+         "COPY / Snowpipe'. The loader does NOT use COPY INTO: it SELECTs records through the "
+         "external stage (one VARIANT per event via FF_JSON), validates each in Python, then "
+         "INSERTs the full set append-only — that read -> branch -> write is exactly what "
+         "lets bad rows go to _QUARANTINE with a reason while the good rows still land, which "
+         "a single COPY cannot do. Hive-style dt=/hr= prefixes sort by time, so the window "
+         "scan reads only the relevant day-folders and re-scans a trailing 48h so late files "
+         "in an old hour still load; --prefill catches older stragglers, --backfill re-reads "
+         "all, --path one folder. Append-only stance: never 'replace with latest' — RAW keeps "
+         "every landed row; dedup and current-state are computed in staging (QUALIFY on "
+         "event_id, newest _loaded_at). Idempotency is two honest layers: file-level, the "
+         "loader skips any file already in _LOAD_LOG (re-run = 0 rows); row-level, event_id "
+         "dedup in staging, which also catches a producer resend in a DIFFERENT file. "
+         "Reprocess on purpose with --force-insert (append dups; staging collapses them) — "
+         "there is no COPY FORCE / SWAP in this path. Snowpipe question: for the deliverable I "
+         "keep a scheduled Python job because the assessed logic — validation, quarantine, "
+         "_LOAD_LOG — lives in that code, and hourly batch on an XS warehouse is cheap. In "
+         "production, with files landing continuously, I'd flip to Event Grid -> Snowpipe "
+         "auto-ingest per file (~1-minute latency, no scheduler), moving validation to a "
          "post-load stream/task. Same table, same append-only contract — only the trigger "
-         "changes. 64-day detail: COPY's per-file load history EXPIRES after 64 days. A "
-         "backfill touching older files is silently SKIPPED by default (status unknown -> "
-         "skip, no error — a silent gap, not duplicates). Deliberate old backfill: set "
-         "LOAD_UNCERTAIN_FILES=TRUE (staging's event_id dedup absorbs any repeats) or "
-         "FORCE=TRUE into a fresh table + SWAP. This expiry is exactly why the design has "
-         "three layers — COPY history expires, a watermark can miss late files, so event_id "
-         "dedup in staging is the backstop that never expires.")
+         "changes.")
 # appendix slide — visible in slideshow
 
-# ============================================================================= SLIDE 18 — BONUS (hidden): COPY logs & 64-day horizon
-s = content("COPY INTO — load logs & the 64-day horizon", "Appendix · Internals")
+# ============================================================================= SLIDE 18 — BONUS (appendix): load logging & idempotency (our _LOAD_LOG, not COPY)
+s = content("Load logging & idempotency — our _LOAD_LOG, not COPY history", "Appendix · Internals")
 bullets(s, [
-    (0, "COPY returns a per-file result set:", "rows_parsed / rows_loaded / errors per file — the Python job persists it to _LOAD_LOG; ours never expires."),
-    (0, "Built-in audit views:", "COPY_HISTORY table function = 14 days, per table; ACCOUNT_USAGE = 365 days, account-wide (~90 min lag)."),
-    (0, "The 64-day dedup horizon:", "the internal metadata COPY uses to skip already-loaded files expires after 64 days — separate from the audit views."),
-    (0, "Beyond 64 days = silent skip:", "unknown-status files are skipped — a silent gap, not duplicates; backfill via LOAD_UNCERTAIN_FILES=TRUE or FORCE + SWAP."),
-    (0, "Why three layers:", "COPY history expires · watermarks miss late files · event_id dedup in staging never expires."),
-], 0.65, 1.5, 7.05, 4.7, base=16.5)
+    (0, "One _LOAD_LOG row per file:", "the loader writes file_name, records_processed, records_quarantined, load timestamp in the SAME transaction as the RAW + quarantine inserts — the load history lives in a queryable table that never expires."),
+    (0, "Idempotency is explicit, not implicit:", "each run does SELECT DISTINCT file_name FROM _LOAD_LOG and skips anything already there — re-run loads zero, and the authority is our own log, not opaque engine metadata."),
+    (0, "Why not COPY INTO:", "per-row validation + a quarantine reason need Python between read and write — COPY can't branch per row; reading the stage and INSERTing keeps that logic in code."),
+    (0, "The COPY contrast:", "COPY's own file-dedup metadata expires after 64 days (beyond it, files are silently skipped, a gap not dups) — owning _LOAD_LOG sidesteps that horizon entirely."),
+    (0, "Native audit still applies:", "QUERY_HISTORY + ACCESS_HISTORY (365 days) show who loaded and who later read ARR; COPY_HISTORY only records real COPY loads, so it's not the surface for this path."),
+], 0.65, 1.5, 7.05, 4.7, base=16)
 code_box(s, 8.0, 1.6, 4.78, 4.55, [
-    "-- COPY's return: per-file summary",
-    "--  file | status | rows_parsed |",
-    "--  rows_loaded | first_error ...",
-    "--  -> Python writes it to _LOAD_LOG",
+    "-- one row per file, SAME transaction",
+    "INSERT INTO ...page_views_load_log",
+    "  (file_name, records_processed,",
+    "   records_quarantined)",
+    "VALUES (?, ?, ?);",
     "",
-    "-- audit: last 14 days, this table",
-    "SELECT file_name, last_load_time,",
-    "       row_count, error_count",
-    "FROM TABLE(information_schema",
-    "  .copy_history(",
-    "   table_name => 'PAGE_VIEWS',",
-    "   start_time => dateadd(day, -14,",
-    "     current_timestamp())));",
+    "-- idempotency: skip already-loaded",
+    "SELECT DISTINCT file_name",
+    "FROM ...page_views_load_log;",
+    "--  -> re-run loads 0 rows",
     "",
-    "-- audit: 365 days, account-wide",
-    "SELECT * FROM snowflake",
-    "  .account_usage.copy_history;",
-    "",
-    "-- backfill older than 64 days",
-    "COPY INTO ...",
-    "  LOAD_UNCERTAIN_FILES = TRUE;",
-], title="every load is observable")
-takeaway(s, "Snowflake logs every COPY (14-day / 365-day views) and returns a per-file summary — persisting it in _LOAD_LOG gives an audit trail that outlives every retention window.")
+    "-- audit: who read ARR, 365 days",
+    "SELECT user_name, query_start_time",
+    "FROM snowflake.account_usage",
+    "  .access_history",
+    "WHERE objectName ILIKE '%ACCOUNT'",
+    "  AND column_name = 'ARR';",
+], title="load history that never expires")
+takeaway(s, "Tracking filenames ourselves makes idempotency a queryable fact and the load history permanent — no 64-day COPY horizon, and per-row validation stays in code.")
 footer(s)
-notes(s, "BONUS / HIDDEN — pull up for 'can we see what COPY loaded?' or the 64-day "
-         "follow-up. Three observable layers: (1) COPY INTO itself returns a result set — "
-         "one row per file with status, rows_parsed, rows_loaded, errors_seen, first_error "
-         "— and the Part 2 Python job captures exactly this into _LOAD_LOG, which is the "
-         "brief's load-summary requirement and lives forever. (2) COPY_HISTORY / "
-         "LOAD_HISTORY: INFORMATION_SCHEMA table functions keep 14 days per table; "
-         "SNOWFLAKE.ACCOUNT_USAGE views keep 365 days account-wide with up to ~90 min "
-         "latency — these are audit/observability surfaces. (3) Distinct from both: the "
-         "internal per-file dedup metadata COPY consults to skip already-loaded files — "
-         "64-day lifetime, not directly queryable. Beyond 64 days the load status is "
-         "'unknown' and COPY silently SKIPS the file by default (gap, not duplicates); "
-         "deliberate backfills set LOAD_UNCERTAIN_FILES=TRUE and let staging's event_id "
-         "dedup absorb repeats, or rebuild with FORCE=TRUE + SWAP. Close with the "
-         "three-layer line: history expires, watermarks miss late files, staging dedup "
-         "never expires.")
+notes(s, "BONUS / HIDDEN — pull up for 'can we see what loaded?' or the idempotency / 64-day "
+         "follow-up. This loader logs itself: every file writes one _LOAD_LOG row (file_name, "
+         "records_processed, records_quarantined, timestamp) in the SAME transaction as the "
+         "RAW + quarantine inserts, so the load summary is atomic and lives forever in a "
+         "queryable table — that's the brief's load-summary requirement. Idempotency is "
+         "explicit, not implicit: each run reads SELECT DISTINCT file_name FROM _LOAD_LOG and "
+         "skips anything already there, so a re-run loads zero and the authority is our own "
+         "log, not engine-internal metadata. Contrast with COPY INTO (why the appendix still "
+         "mentions it): COPY maintains its OWN per-file load history to skip already-loaded "
+         "files, but that metadata EXPIRES after 64 days — beyond it a file's status is "
+         "'unknown' and COPY silently skips it by default (a gap, not dups), which is why "
+         "COPY-based designs need LOAD_UNCERTAIN_FILES=TRUE or FORCE + SWAP for old backfills. "
+         "By owning _LOAD_LOG we sidestep that horizon entirely. Native audit still applies to "
+         "our INSERT path: QUERY_HISTORY + ACCESS_HISTORY (ACCOUNT_USAGE, 365 days, ~90-min "
+         "lag) answer 'who loaded' and 'who read ACCOUNT.ARR, when'; COPY_HISTORY only records "
+         "actual COPY loads, so it is not the surface here. One-breath close: 'we track "
+         "filenames ourselves, so idempotency is a query and the load log never expires.'")
 # appendix slide — visible in slideshow
 
 # ----------------------------------------------------------------------------- save
